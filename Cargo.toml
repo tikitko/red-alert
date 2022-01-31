@@ -1,0 +1,8 @@
+[package]
+name = "red-alert"
+version = "0.0.4"
+edition = "2021"
+
+[dependencies]
+serenity = { version = "0.10.9", default-features = false, features = ["builder", "cache", "client", "gateway", "model", "utils", "rustls_backend", "collector"] }
+tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }

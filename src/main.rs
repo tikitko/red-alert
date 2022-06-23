@@ -1,6 +1,5 @@
 mod red_alert_handler;
 
-use std::env;
 use guard::*;
 use red_alert_handler::*;
 use serenity::model::prelude::*;
@@ -157,11 +156,12 @@ impl EventHandler for Handler {
         }
         let answer_msg = if !msg.mention_channels.is_empty() {
             // self.listen_for_red_alert(&ctx).await
-            return
+            return;
         } else {
             let author_id = msg.author.id;
             let target_users_ids: Vec<UserId> = msg.mentions.iter().map(|u| u.id).collect();
-            self.process_red_alert(&ctx, &guild, author_id, target_users_ids).await
+            self.process_red_alert(&ctx, &guild, author_id, target_users_ids)
+                .await
         };
         let _ = msg.channel_id.say(&ctx, answer_msg).await;
     }
@@ -172,8 +172,7 @@ impl EventHandler for Handler {
 
 #[tokio::main]
 async fn main() {
-    let token = env::var("DISCORD_TOKEN")
-        .expect("Expected a token in the environment");
+    let token = std::env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
     let mut client = Client::builder(&token)
         .event_handler(Handler::default())
         .await

@@ -7,16 +7,6 @@ use serenity::model::prelude::*;
 use serenity::prelude::*;
 use serenity::*;
 
-async fn user_name(ctx: &Context, user_id: &UserId) -> Option<String> {
-    if let Some(cached_user_name) = ctx.cache.user(user_id).await.map(|u| u.name) {
-        return Some(cached_user_name);
-    }
-    if let Ok(received_user_name) = ctx.http.get_user(user_id.0).await.map(|u| u.name) {
-        return Some(received_user_name);
-    }
-    None
-}
-
 fn is_sub<T: PartialEq>(first: &Vec<T>, second: &Vec<T>) -> bool {
     if second.len() == 0 {
         return false;
@@ -48,6 +38,11 @@ impl Default for Handler {
 }
 
 impl Handler {
+    async fn listen_for_red_alert(&self, ctx: &Context, channel_id: ChannelId) -> String {
+        let channel_name = channel_id.mention();
+
+        format!("ОТСЛЕЖИВАЮ КОД КРАСНЫЙ В КАНАЛЕ: {channel_name}...")
+    }
     async fn process_red_alert(
         &self,
         ctx: &Context,
@@ -79,9 +74,7 @@ impl Handler {
             }
             1 => {
                 if let Some((user_id, deport_status)) = red_alert_result.iter().next() {
-                    let user_name = user_name(&ctx, user_id)
-                        .await
-                        .unwrap_or("\"НЕИЗВЕСТНЫЙ ТИП\"".to_string());
+                    let user_name = user_id.mention();
                     match deport_status {
                         RedAlertDeportationResult::Deported => format!("КОД КРАСНЫЙ ПОДТВЕРЖДЕН! АНТИКРИНЖ ОРУЖИЕ ИСПОЛЬЗОВАНО ПРОТИВ {user_name}!!! 0)00))00"),
                         RedAlertDeportationResult::NotFound => {
@@ -114,9 +107,7 @@ impl Handler {
                 let mut some_kicked = false;
                 let mut result_strings = Vec::new();
                 for (user_id, deport_status) in red_alert_result {
-                    let user_name = user_name(&ctx, &user_id)
-                        .await
-                        .unwrap_or("\"НЕИЗВЕСТНЫЙ ТИП\"".to_string());
+                    let user_name = user_id.mention();
                     let deport_status = match deport_status {
                         RedAlertDeportationResult::Deported => {
                             some_kicked = true;
@@ -156,24 +147,23 @@ impl EventHandler for Handler {
         if msg.author.bot {
             return;
         };
-        guard!(let Some(guild) = msg.guild(&ctx.cache).await else { return });
+        guard!(let Some(guild) = msg.guild(&ctx.cache).await else {
+            return
+        });
         let message = msg.content.to_lowercase();
         let message_words: Vec<&str> = message.split(char::is_whitespace).collect();
         if !is_sub(&message_words, &vec!["код", "красный"]) {
             return;
         }
-        if !msg.mention_channels.is_empty() {
-            let channel = &msg.m
-            let channel_name = &channel.name;
-            let _ = msg.channel_id.say(&ctx, format!("ОТСЛЕЖИВАЮ КОД КРАСНЫЙ В КАНАЛЕ: {channel_name}...")).await;
+        let answer_msg = if !msg.mention_channels.is_empty() {
+            // self.listen_for_red_alert(&ctx).await
+            return
         } else {
             let author_id = msg.author.id;
             let target_users_ids: Vec<UserId> = msg.mentions.iter().map(|u| u.id).collect();
-            let answer_msg = self
-                .process_red_alert(&ctx, &guild, author_id, target_users_ids)
-                .await;
-            let _ = msg.channel_id.say(&ctx, answer_msg).await;
-        }
+            self.process_red_alert(&ctx, &guild, author_id, target_users_ids).await
+        };
+        let _ = msg.channel_id.say(&ctx, answer_msg).await;
     }
     async fn ready(&self, _: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);

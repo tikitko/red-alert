@@ -6,13 +6,13 @@ use serenity::prelude::*;
 use serenity::*;
 
 struct Handler {
-    red_alert_handler: red_alert_handler::RedAlertHandler,
+    red_alert_handler: RedAlertHandler,
 }
 
 impl Default for Handler {
     fn default() -> Self {
         Self {
-            red_alert_handler: red_alert_handler::RedAlertHandler::new(
+            red_alert_handler: RedAlertHandler::new(
                 std::collections::HashSet::from(["код красный ".to_string(), "код к ".to_string()]),
                 std::collections::HashSet::from([UserId(224181375912116227)]),
             ),
@@ -70,7 +70,9 @@ impl EventHandler for Handler {
                             RedAlertDeportationUserResult::Deported => format!("КОД КРАСНЫЙ ПОДТВЕРЖДЕН! АНТИКРИНЖ ОРУЖИЕ ИСПОЛЬЗОВАНО ПРОТИВ {user_name}!!! 0)00))00"),
                             RedAlertDeportationUserResult::NotFound => {
                                 if let Some(suicide_deport_status) = red_alert_handler
-                                    .suicide_author_if_possible(&ctx, &msg).await {
+                                    .suicide_author_if_possible(&ctx, &msg)
+                                    .await
+                                {
                                     match suicide_deport_status {
                                         RedAlertDeportationUserResult::Deported => format!("В КАНАЛЕ НЕТ ЧЕЛА ДЛЯ КОДА КРАСНОГО, ЗНАЧИТ У ТЕБЯ БЕДЫ С БОШКОЙ, КОД КРАСНЫЙ НА ТЕБЯ!"),
                                         RedAlertDeportationUserResult::NotFound => format!("ДОФИГА УМНЫЙ ВИЖУ? В КАНАЛЕ НЕТ ЧЕЛА ДЛЯ КОДА КРАСНОГО, ЖАЛЬ ТЕБЯ В КАНАЛЕ НЕТУ, ТАК БЫ ТЕБЯ ШМАЛЬНУЛ КОДОМ КРАСНЫМ! ОТМЕНА! Пшшшш..."),

@@ -1,32 +1,30 @@
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 
+pub enum RedAlertDeportationUserResult {
+    Deported,
+    NotFound,
+    Error(SerenityError),
+}
+
 pub enum RedAlertHandlerAnswer {
     Empty,
-    Version(String),
     NotGuildChat,
     BlockedUser(UserId),
-    DeportationResult(
-        std::collections::HashMap<UserId, super::red_alert::RedAlertDeportationUserResult>,
-    ),
+    DeportationResult(std::collections::HashMap<UserId, RedAlertDeportationUserResult>),
 }
 
 pub struct RedAlertHandler {
-    red_alert: super::red_alert::RedAlert,
-    version: String,
     prefix_key_words: std::collections::HashSet<String>,
     users_ids_black_list: std::collections::HashSet<UserId>,
 }
 
 impl RedAlertHandler {
     pub fn new(
-        version: String,
         prefix_key_words: std::collections::HashSet<String>,
         users_ids_black_list: std::collections::HashSet<UserId>,
     ) -> Self {
         Self {
-            red_alert: Default::default(),
-            version,
             prefix_key_words,
             users_ids_black_list,
         }
@@ -43,33 +41,45 @@ impl RedAlertHandler {
         false
     }
 
+    async fn deportation(
+        ctx: &Context,
+        guild: &Guild,
+        execution_users_ids: std::collections::HashSet<UserId>,
+    ) -> std::collections::HashMap<UserId, RedAlertDeportationUserResult> {
+        let mut result = std::collections::HashMap::new();
+        for user_id in execution_users_ids {
+            if let Some(_voice_state) = guild.voice_states.get(&user_id) {
+                match guild.id.disconnect_member(&ctx, user_id).await {
+                    Ok(_member) => result.insert(user_id, RedAlertDeportationUserResult::Deported),
+                    Err(err) => result.insert(user_id, RedAlertDeportationUserResult::Error(err)),
+                };
+            } else {
+                result.insert(user_id, RedAlertDeportationUserResult::NotFound);
+            }
+        }
+        return result;
+    }
+
     pub async fn suicide_author_if_possible(
         &self,
         ctx: &Context,
         msg: &Message,
-    ) -> Option<super::red_alert::RedAlertDeportationUserResult> {
+    ) -> Option<RedAlertDeportationUserResult> {
         let guild = if let Some(guild) = msg.guild(&ctx).await {
             guild
         } else {
             return None;
         };
-        self.red_alert
-            .deportation(
-                &ctx,
-                &guild,
-                std::collections::HashSet::from([msg.author.id]),
-            )
-            .await
-            .remove(&msg.author.id)
+        Self::deportation(
+            &ctx,
+            &guild,
+            std::collections::HashSet::from([msg.author.id]),
+        )
+        .await
+        .remove(&msg.author.id)
     }
 
     pub async fn answer(&self, ctx: &Context, msg: &Message) -> RedAlertHandlerAnswer {
-        if let (true, user) = (msg.mentions.len() == 1, ctx.cache.current_user().await) {
-            if msg.mentions_user_id(user.id) {
-                return RedAlertHandlerAnswer::Version(self.version.clone());
-            }
-        }
-
         if msg.author.bot || !self.is_contains_prefix_key_word(&msg.content) {
             return RedAlertHandlerAnswer::Empty;
         }
@@ -85,7 +95,7 @@ impl RedAlertHandler {
         }
 
         let mentions = std::collections::HashSet::from_iter(msg.mentions.iter().map(|u| u.id));
-        let deportation_result = self.red_alert.deportation(&ctx, &guild, mentions).await;
+        let deportation_result = Self::deportation(&ctx, &guild, mentions).await;
 
         RedAlertHandlerAnswer::DeportationResult(deportation_result)
     }

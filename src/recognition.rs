@@ -27,12 +27,10 @@ pub struct RecognitionEvent {
 
 pub fn start_recognition(
     workers_count: usize,
-    model: &Model,
-    voice_receiver: &VoiceReceiver,
+    model: Model,
+    voice_receiver: VoiceReceiver,
 ) -> Receiver<RecognitionWorkerEvent> {
     let (tx, rx) = mpsc::channel();
-    let voice_receiver = voice_receiver.clone();
-    let model = model.clone();
     for worker_number in 1..workers_count {
         let tx = tx.clone();
         let voice_receiver = voice_receiver.clone();

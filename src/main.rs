@@ -166,17 +166,10 @@ async fn listen_for_red_alert(
                 };
 
                 match worker_event {
-                    RecognitionWorkerEvent::Event(worker_number, user_id, recognition_event) => {
-                        println!(
-                            "({}) Start: User ID: {:?}, text: {}",
-                            worker_number, user_id, recognition_event.text
-                        );
+                    RecognitionWorkerEvent::Event(_, user_id, recognition_event) => {
                         if recognition_event.text.contains("никита") {
                             if let Some(user_id) = user_id {
                                 if !session_kicked.contains(&user_id) {
-                                    let red_alert_handler = red_alert_handler.clone();
-                                    let ctx = ctx.clone();
-                                    let guild = guild.clone();
                                     red_alert_handler.handle(&ctx, &guild, vec![user_id]).await;
                                     session_kicked.insert(user_id);
                                 }
@@ -184,14 +177,12 @@ async fn listen_for_red_alert(
                         }
                     }
                     RecognitionWorkerEvent::Idle(_) => {}
-                    RecognitionWorkerEvent::Start(worker_number, user_id) => {
-                        println!("({}) Start: User ID: {:?}", worker_number, user_id);
+                    RecognitionWorkerEvent::Start(_, user_id) => {
                         if let Some(user_id) = user_id {
                             session_kicked.remove(&user_id);
                         }
                     }
-                    RecognitionWorkerEvent::End(worker_number, user_id) => {
-                        println!("({}) End: User ID: {:?}", worker_number, user_id);
+                    RecognitionWorkerEvent::End(_, user_id) => {
                         if let Some(user_id) = user_id {
                             session_kicked.remove(&user_id);
                         }

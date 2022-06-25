@@ -4,3 +4,4 @@ Cargo.lock
 
 libvosk.a
 /vosk-model-*/
+red_alert_config.json

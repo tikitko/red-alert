@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 guard = "0.5.1"
 bimap = "0.6.2"
+config = "0.13.1"
 voskrust = { git = "https://github.com/tikitko/voskrust.git" }
 songbird = "0.2.2"
 fon = "0.6.0"

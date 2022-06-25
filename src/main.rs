@@ -6,14 +6,16 @@ use recognition::*;
 use red_alert_handler::*;
 use voice_receiver::*;
 
+use config::{Config as ConfigFile, File};
 use guard::guard;
 use serenity::model::prelude::{ChannelId, Guild, Message, Ready, UserId};
 use serenity::prelude::{Context, EventHandler, Mentionable, TypeMapKey};
 use serenity::{async_trait, Client};
 use songbird::driver::DecodeMode;
 use songbird::{Config, SerenityInit};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::ops::DerefMut;
+use std::path::Path;
 use std::sync::mpsc::{SyncSender, TryRecvError};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
@@ -43,8 +45,36 @@ impl TypeMapKey for VoidSender {
     type Value = Self;
 }
 
+#[derive(Clone)]
+struct VoiceConfig {
+    target_words: Vec<String>,
+    self_words: Vec<String>,
+    aliases: HashMap<String, u64>,
+}
+
+impl VoiceConfig {
+    fn should_kick(&self, author_user_id: UserId, text: &String) -> Option<UserId> {
+        for self_word in &self.self_words {
+            if text.contains(self_word) {
+                return Some(author_user_id);
+            }
+        }
+        for target_word in &self.target_words {
+            if text.contains(target_word) {
+                for (name, user_id) in &self.aliases {
+                    if text.contains(name) {
+                        return Some(UserId(*user_id));
+                    }
+                }
+            }
+        }
+        None
+    }
+}
+
 struct Handler {
     recognition_model: Model,
+    voice_config: VoiceConfig,
     red_alert_handler: Arc<RedAlertHandler>,
 }
 
@@ -76,6 +106,7 @@ impl EventHandler for Handler {
                 listen_for_red_alert(
                     self.red_alert_handler.clone(),
                     &self.recognition_model,
+                    &self.voice_config,
                     &ctx,
                     &guild,
                     possible_channel_id,
@@ -113,6 +144,7 @@ impl EventHandler for Handler {
 async fn listen_for_red_alert(
     red_alert_handler: Arc<RedAlertHandler>,
     recognition_model: &Model,
+    voice_config: &VoiceConfig,
     ctx: &Context,
     guild: &Guild,
     channel_id: ChannelId,
@@ -139,6 +171,7 @@ async fn listen_for_red_alert(
 
         let red_alert_handler = red_alert_handler.clone();
         let recognition_model = recognition_model.clone();
+        let voice_config = voice_config.clone();
         let ctx = ctx.clone();
         let guild = guild.clone();
         tokio::spawn(async move {
@@ -167,13 +200,21 @@ async fn listen_for_red_alert(
 
                 match worker_event {
                     RecognitionWorkerEvent::Event(_, user_id, recognition_event) => {
-                        if recognition_event.text.contains("никита") {
+                        if let Some(kick_user_id) = {
                             if let Some(user_id) = user_id {
                                 if !session_kicked.contains(&user_id) {
-                                    red_alert_handler.handle(&ctx, &guild, vec![user_id]).await;
-                                    session_kicked.insert(user_id);
+                                    voice_config.should_kick(user_id, &recognition_event.text)
+                                } else {
+                                    None
                                 }
+                            } else {
+                                None
                             }
+                        } {
+                            red_alert_handler
+                                .handle(&ctx, &guild, vec![kick_user_id])
+                                .await;
+                            session_kicked.insert(kick_user_id);
                         }
                     }
                     RecognitionWorkerEvent::Idle(_) => {}
@@ -317,17 +358,57 @@ async fn process_red_alert(
 
 #[tokio::main]
 async fn main() {
-    let token = std::env::var("DISCORD_TOKEN").expect("Expected a token in the environment!");
-    let recognition_model_path = std::env::var("RECOGNITION_MODEL_PATH").expect("Expected a recognition model path in the environment!");
+    let settings = ConfigFile::builder()
+        .add_source(File::from(Path::new("red_alert_config.json")))
+        .build()
+        .expect("You should setup file \"red_alert_config.json\"!");
 
-    let songbird_config = Config::default().decode_mode(DecodeMode::Decode);
+    let token = settings
+        .get_string("DISCORD_TOKEN")
+        .expect("Expected a token in the config!");
+    let recognition_model_path = settings
+        .get_string("RECOGNITION_MODEL_PATH")
+        .expect("Expected a recognition model path in the environment!");
+
+    let voice_settings = settings
+        .get_table("VOICE")
+        .expect("Expected a voice configuration in the config!");
+
+    let target_words = voice_settings
+        .get("TARGET_WORDS")
+        .expect("Expected a target words in the config!")
+        .clone();
+    let target_words: Vec<String> = target_words
+        .try_deserialize()
+        .expect("Incorrect format of target words in the config!");
+
+    let self_words = voice_settings
+        .get("SELF_WORDS")
+        .expect("Expected a self words in the config!")
+        .clone();
+    let self_words: Vec<String> = self_words
+        .try_deserialize()
+        .expect("Incorrect format of self words in the config!");
+
+    let aliases = voice_settings
+        .get("ALIASES")
+        .expect("Expected a aliases in the config!")
+        .clone();
+    let aliases: HashMap<String, u64> = aliases
+        .try_deserialize()
+        .expect("Incorrect format of aliases in the config!");
 
     let mut client = Client::builder(&token)
         .event_handler(Handler {
             recognition_model: Model::new(recognition_model_path.as_str()).unwrap(),
+            voice_config: VoiceConfig {
+                target_words,
+                self_words,
+                aliases,
+            },
             red_alert_handler: Arc::new(RedAlertHandler),
         })
-        .register_songbird_from_config(songbird_config)
+        .register_songbird_from_config(Config::default().decode_mode(DecodeMode::Decode))
         .await
         .expect("Err creating client");
 

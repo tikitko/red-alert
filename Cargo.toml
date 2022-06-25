@@ -5,5 +5,8 @@ edition = "2021"
 
 [dependencies]
 guard = "0.5.1"
-serenity = { version = "0.10.9", default-features = false, features = ["builder", "cache", "client", "gateway", "model", "utils", "rustls_backend", "collector"] }
+voskrust = { git = "https://github.com/tikitko/voskrust.git" }
+songbird = "0.2.2"
+fon = "0.6.0"
+serenity = { version = "0.10", default-features = false, features = ["builder", "cache", "client", "gateway", "model", "utils", "rustls_backend", "collector", "voice"] }
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }

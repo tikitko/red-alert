@@ -1,10 +1,22 @@
+mod recognition;
 mod red_alert_handler;
+mod voice_receiver;
 
-use guard::*;
+use recognition::*;
 use red_alert_handler::*;
-use serenity::model::prelude::*;
-use serenity::prelude::*;
-use serenity::*;
+use voice_receiver::*;
+
+use guard::guard;
+use serenity::model::prelude::{ChannelId, Guild, Message, Ready, UserId};
+use serenity::prelude::{Context, EventHandler, Mentionable, TypeMapKey};
+use serenity::{async_trait, Client};
+use songbird::driver::DecodeMode;
+use songbird::{Config, SerenityInit};
+use std::ops::DerefMut;
+use std::sync::mpsc;
+use std::sync::mpsc::{SyncSender, TryRecvError};
+use std::thread;
+use voskrust::api::Model;
 
 fn is_sub<T: PartialEq>(first: &Vec<T>, second: &Vec<T>) -> bool {
     if second.len() == 0 {
@@ -24,24 +36,124 @@ fn is_sub<T: PartialEq>(first: &Vec<T>, second: &Vec<T>) -> bool {
     false
 }
 
+struct VoidSender(SyncSender<()>);
+
+impl TypeMapKey for VoidSender {
+    type Value = Self;
+}
+
 struct Handler {
+    recognition_model: Model,
     red_alert_handler: RedAlertHandler,
 }
 
 impl Default for Handler {
     fn default() -> Self {
         Self {
+            recognition_model: Model::new("vosk-model-small-ru-0.22").unwrap(),
             red_alert_handler: RedAlertHandler,
         }
     }
 }
 
 impl Handler {
-    async fn listen_for_red_alert(&self, ctx: &Context, channel_id: ChannelId) -> String {
+    async fn listen_for_red_alert(
+        &self,
+        ctx: &Context,
+        guild: &Guild,
+        channel_id: ChannelId,
+    ) -> String {
         let channel_name = channel_id.mention();
+        let guild_id = guild.id;
 
-        format!("ОТСЛЕЖИВАЮ КОД КРАСНЫЙ В КАНАЛЕ: {channel_name}...")
+        let manager = songbird::get(ctx)
+            .await
+            .expect("Songbird Voice client placed in at initialisation.")
+            .clone();
+
+        let (handler_lock, conn_result) = manager.join(guild_id, channel_id).await;
+
+        if let Ok(_) = conn_result {
+            let mut handler = handler_lock.lock().await;
+
+            let voice_receiver = VoiceReceiver::default_start_on(handler.deref_mut());
+
+            let recognition_signal = start_recognition(5, &self.recognition_model, &voice_receiver);
+
+            let (tx, rx) = mpsc::sync_channel::<()>(1);
+            thread::spawn(move || 'root: loop {
+                match rx.try_recv() {
+                    Ok(()) | Err(TryRecvError::Disconnected) => {
+                        break 'root;
+                    }
+                    Err(TryRecvError::Empty) => {}
+                }
+
+                if let Ok(worker_event) = recognition_signal.recv() {
+                    match worker_event {
+                        RecognitionWorkerEvent::Event(
+                            worker_number,
+                            user_id,
+                            recognition_event
+                        ) => println!(
+                            "({}) Event: User ID: {:?}; text: {}; is partial: {}",
+                            worker_number,
+                            user_id,
+                            recognition_event.text,
+                            recognition_event.text_type == RecognitionEventType::Partial
+                        ),
+                        RecognitionWorkerEvent::Idle(worker_number) => println!(
+                            "({}) Idle",
+                            worker_number
+                        ),
+                        RecognitionWorkerEvent::Start(worker_number, user_id) => println!(
+                            "({}) Start: User ID: {:?}",
+                            worker_number,
+                            user_id
+                        ),
+                        RecognitionWorkerEvent::End(worker_number, user_id) => println!(
+                            "({}) End: User ID: {:?}",
+                            worker_number,
+                            user_id
+                        )
+                    }
+                } else {
+                    break 'root
+                }
+            });
+
+            let mut data = ctx.data.write().await;
+            data.insert::<VoidSender>(VoidSender(tx));
+
+            format!("ОТСЛЕЖИВАЮ КОД КРАСНЫЙ В КАНАЛЕ {channel_name}...")
+        } else {
+            format!("ОШИБКА СЛЕЖКИ ЗА КАНАЛОМ {channel_name}.")
+        }
     }
+
+    async fn exit_for_red_alert(&self, ctx: &Context, guild: &Guild) -> String {
+        let guild_id = guild.id;
+
+        let manager = songbird::get(ctx)
+            .await
+            .expect("Songbird Voice client placed in at initialisation.")
+            .clone();
+
+        let has_handler = manager.get(guild_id).is_some();
+
+        if has_handler {
+            if let Err(_) = manager.remove(guild_id).await {
+                format!("ПРОИЗОШЛА ОШИБКА!")
+            } else {
+                let mut data = ctx.data.write().await;
+                data.remove::<VoidSender>();
+                format!("ПРЕКРАЩАЮ ОТСЛЕЖИВАНИЕ КАНАЛА!")
+            }
+        } else {
+            format!("НЕ ОТСЛЕЖИВАЮ КАНАЛЫ!")
+        }
+    }
+
     async fn process_red_alert(
         &self,
         ctx: &Context,
@@ -151,19 +263,39 @@ impl EventHandler for Handler {
         });
         let message = msg.content.to_lowercase();
         let message_words: Vec<&str> = message.split(char::is_whitespace).collect();
-        if !is_sub(&message_words, &vec!["код", "красный"]) {
-            return;
-        }
-        let answer_msg = if !msg.mention_channels.is_empty() {
-            // self.listen_for_red_alert(&ctx).await
-            return;
-        } else {
+
+        let answer_msg = if is_sub(&message_words, &vec!["отслеживать", "код", "красный"])
+        {
+            let possible_channel_id: Option<ChannelId> = {
+                let mut possible_channel_id: Option<u64> = None;
+                for message_word in message_words {
+                    if let Ok(value) = message_word.parse::<u64>() {
+                        possible_channel_id = Some(value);
+                        break;
+                    }
+                }
+                possible_channel_id.map(|n| ChannelId(n))
+            };
+            if let Some(possible_channel_id) = possible_channel_id {
+                self.listen_for_red_alert(&ctx, &guild, possible_channel_id)
+                    .await
+            } else {
+                format!("ЧТО ОТСЛЕЖИВАТЬ НАРКОМАН?")
+            }
+        } else if is_sub(&message_words, &vec!["прекратить", "код", "красный"])
+        {
+            self.exit_for_red_alert(&ctx, &guild).await
+        } else if is_sub(&message_words, &vec!["код", "красный"]) {
             let author_id = msg.author.id;
             let target_users_ids: Vec<UserId> = msg.mentions.iter().map(|u| u.id).collect();
             self.process_red_alert(&ctx, &guild, author_id, target_users_ids)
                 .await
+        } else {
+            format!("")
         };
-        let _ = msg.channel_id.say(&ctx, answer_msg).await;
+        if !answer_msg.is_empty() {
+            let _ = msg.channel_id.say(&ctx, answer_msg).await;
+        }
     }
     async fn ready(&self, _: Context, ready: Ready) {
         println!("{} is connected!", ready.user.name);
@@ -173,10 +305,15 @@ impl EventHandler for Handler {
 #[tokio::main]
 async fn main() {
     let token = std::env::var("DISCORD_TOKEN").expect("Expected a token in the environment");
+
+    let songbird_config = Config::default().decode_mode(DecodeMode::Decode);
+
     let mut client = Client::builder(&token)
         .event_handler(Handler::default())
+        .register_songbird_from_config(songbird_config)
         .await
         .expect("Err creating client");
+
     if let Err(why) = client.start().await {
         println!("Client error: {:?}", why);
     }

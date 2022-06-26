@@ -63,6 +63,9 @@ impl VoiceReceiver {
         handler.add_global_event(CoreEvent::SpeakingUpdate.into(), voice_receiver.clone());
         handler.add_global_event(CoreEvent::VoicePacket.into(), voice_receiver.clone());
         handler.add_global_event(CoreEvent::ClientDisconnect.into(), voice_receiver.clone());
+        handler.add_global_event(CoreEvent::DriverConnect.into(), voice_receiver.clone());
+        handler.add_global_event(CoreEvent::DriverDisconnect.into(), voice_receiver.clone());
+        handler.add_global_event(CoreEvent::DriverReconnect.into(), voice_receiver.clone());
 
         voice_receiver
     }
@@ -145,6 +148,15 @@ impl VoiceReceiver {
             }
         }
     }
+
+    fn reset_in_processing(&self) {
+        let mut in_processing_clients_voices = self.in_processing_clients_voices.write().unwrap();
+        for (_, in_processing_client_voice) in in_processing_clients_voices.iter() {
+            let mut in_processing_client_voice = in_processing_client_voice.write().unwrap();
+            in_processing_client_voice.is_completed = true
+        }
+        in_processing_clients_voices.clear();
+    }
 }
 
 #[async_trait]
@@ -157,6 +169,9 @@ impl VoiceEventHandler for VoiceReceiver {
             Ctx::SpeakingUpdate(data) => self.update_for_speaking_update_data(data),
             Ctx::VoicePacket(data) => self.update_for_voice_data(data),
             Ctx::ClientDisconnect(disconnect) => self.update_for_disconnect(disconnect),
+            Ctx::DriverConnect(data) => self.reset_in_processing(),
+            Ctx::DriverDisconnect(data) => self.reset_in_processing(),
+            Ctx::DriverReconnect(data) => self.reset_in_processing(),
             _ => unimplemented!(),
         }
         None

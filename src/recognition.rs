@@ -58,8 +58,8 @@ pub fn start_recognition(
                             continue;
                         }
                     } else {
-                        let voice_part = &voice.chunks[last_processed_chunk];
-                        let completed = recognizer.accept_waveform(voice_part);
+                        let voice_chunk = &voice.chunks[last_processed_chunk];
+                        let completed = recognizer.accept_waveform(voice_chunk);
                         if let Some(recognition_event) = {
                             if completed {
                                 let result = recognizer.final_result();

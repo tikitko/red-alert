@@ -211,9 +211,14 @@ async fn listen_for_red_alert(
                                 None
                             }
                         } {
-                            red_alert_handler
-                                .handle(&ctx, &guild, vec![kick_user_id])
-                                .await;
+                            let red_alert_handler = red_alert_handler.clone();
+                            let ctx = ctx.clone();
+                            let guild = guild.clone();
+                            tokio::spawn(async move {
+                                red_alert_handler
+                                    .handle(&ctx, &guild, vec![kick_user_id])
+                                    .await;
+                            });
                             session_kicked.insert(kick_user_id);
                         }
                     }

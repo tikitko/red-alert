@@ -1,8 +1,8 @@
 # red-alert
 
-VOSK Models: https://alphacephei.com/vosk/models
-
 `libvosk.a`: https://github.com/tikitko/voskrust/blob/main/README.md
+
+VOSK Models: https://alphacephei.com/vosk/models
 
 `red_alert_config.json`:
 ```json

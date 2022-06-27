@@ -405,7 +405,8 @@ async fn main() {
 
     let mut client = Client::builder(&token)
         .event_handler(Handler {
-            recognition_model: Model::new(recognition_model_path.as_str()).unwrap(),
+            recognition_model: Model::new(recognition_model_path.as_str())
+                .expect("Incorrect recognition model!"),
             voice_config: VoiceConfig {
                 target_words,
                 self_words,

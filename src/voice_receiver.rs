@@ -82,7 +82,7 @@ impl VoiceReceiver {
         let ids_map = self.ids_map.read().unwrap();
         let mut clients_voices = self.for_taking_clients_voices.write().unwrap();
         if clients_voices.len() > 0 {
-            let client_voice = clients_voices.remove(0).clone();
+            let client_voice = clients_voices.remove(0);
             let client_voice_id = client_voice.read().unwrap().id;
             let client_user_id = ids_map.get_by_left(&client_voice_id).cloned();
             Some(ReadVoiceContainer {

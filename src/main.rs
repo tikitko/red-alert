@@ -22,7 +22,7 @@ use std::time::Duration;
 use voskrust::api::Model;
 
 fn is_sub<T: PartialEq>(first: &Vec<T>, second: &Vec<T>) -> bool {
-    if second.len() == 0 {
+    if second.is_empty() {
         return false;
     }
     let mut index: usize = 0;
@@ -100,7 +100,7 @@ impl EventHandler for Handler {
                         break;
                     }
                 }
-                possible_channel_id.map(|n| ChannelId(n))
+                possible_channel_id.map(ChannelId)
             };
             if let Some(possible_channel_id) = possible_channel_id {
                 listen_for_red_alert(
@@ -159,7 +159,7 @@ async fn listen_for_red_alert(
 
     let (handler_lock, conn_result) = manager.join(guild_id, channel_id).await;
 
-    if let Ok(_) = conn_result {
+    if conn_result.is_ok() {
         let mut handler = handler_lock.lock().await;
 
         let voice_receiver = VoiceReceiver::default_start_on(handler.deref_mut());
@@ -254,7 +254,7 @@ async fn exit_for_red_alert(ctx: &Context, guild: &Guild) -> String {
     let has_handler = manager.get(guild_id).is_some();
 
     if has_handler {
-        if let Err(_) = manager.remove(guild_id).await {
+        if manager.remove(guild_id).await.is_err() {
             format!("ПРОИЗОШЛА ОШИБКА!")
         } else {
             let mut data = ctx.data.write().await;
@@ -274,13 +274,13 @@ async fn process_red_alert(
     target_users_ids: Vec<UserId>,
 ) -> String {
     let red_alert_result = red_alert_handler
-        .handle(&ctx, &guild, target_users_ids)
+        .handle(ctx, guild, target_users_ids)
         .await;
 
     match red_alert_result.len() {
         0 => {
             if let Some(result) = red_alert_handler
-                .handle(&ctx, &guild, vec![author_user_id])
+                .handle(ctx, guild, vec![author_user_id])
                 .await
                 .get(&author_user_id)
             {
@@ -300,8 +300,8 @@ async fn process_red_alert(
                     RedAlertDeportationResult::Deported => format!("КОД КРАСНЫЙ ПОДТВЕРЖДЕН! АНТИКРИНЖ ОРУЖИЕ ИСПОЛЬЗОВАНО ПРОТИВ {user_name}!!! 0)00))00"),
                     RedAlertDeportationResult::NotFound => {
                         if let Some(result) = red_alert_handler.handle(
-                            &ctx,
-                            &guild,
+                            ctx,
+                            guild,
                             vec![author_user_id]
                         )
                             .await
@@ -344,7 +344,7 @@ async fn process_red_alert(
                 format!("ОУ, МАССОВЫЙ КОД КРАСНЫЙ? СТАТУС ВЫКОСА КРИНЖОВИКОВ:\n{result_string}")
             } else {
                 if let Some(result) = red_alert_handler
-                    .handle(&ctx, &guild, vec![author_user_id])
+                    .handle(ctx, guild, vec![author_user_id])
                     .await
                     .get(&author_user_id)
                 {

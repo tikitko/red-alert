@@ -118,7 +118,7 @@ impl VoiceReceiver {
                 let client_voice = ClientVoice::empty_for_id(data.ssrc);
                 let client_voice = Arc::new(RwLock::new(client_voice));
                 in_processing_clients_voices.insert(data.ssrc, client_voice.clone());
-                for_taking_clients_voices.push(client_voice.clone());
+                for_taking_clients_voices.push(client_voice);
             }
         }
     }

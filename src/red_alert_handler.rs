@@ -27,6 +27,6 @@ impl RedAlertHandler {
                 result.insert(user_id, RedAlertDeportationResult::NotFound);
             }
         }
-        return result;
+        result
     }
 }

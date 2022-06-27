@@ -74,8 +74,7 @@ pub fn start_recognition(
                             } else {
                                 let result = recognizer.partial_result();
                                 if result != last_partial {
-                                    last_partial.clear();
-                                    last_partial.insert_str(0, &result);
+                                    last_partial = result.to_string();
                                     if !result.is_empty() {
                                         Some(RecognitionEvent {
                                             text_type: RecognitionEventType::Partial,

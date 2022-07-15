@@ -21,17 +21,17 @@ pub struct RecognitionResult {
 }
 
 #[derive(PartialEq, Clone)]
-pub struct RecognizerEvent {
-    pub worker_number: usize,
-    pub recognition_event: RecognitionEvent,
-}
-
-#[derive(PartialEq, Clone)]
 pub enum RecognitionEvent {
     Idle,
     Start(Option<UserId>),
     Result(Option<UserId>, RecognitionResult),
     End(Option<UserId>),
+}
+
+#[derive(PartialEq, Clone)]
+pub struct RecognizerEvent {
+    pub worker_number: usize,
+    pub recognition_event: RecognitionEvent,
 }
 
 pub struct Recognizer {

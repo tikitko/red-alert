@@ -1,6 +1,4 @@
 use bimap::BiMap;
-use fon::chan::Ch16;
-use fon::Audio;
 use serenity::async_trait;
 use serenity::model::prelude::UserId;
 use songbird::events::context_data::{SpeakingUpdateData, VoiceData};
@@ -41,16 +39,14 @@ impl ClientVoice {
 
 #[derive(Clone)]
 pub struct VoiceReceiver {
-    output_hz: u32,
     ids_map: Arc<RwLock<BiMap<u32, UserId>>>,
     for_taking_clients_voices: Arc<RwLock<Vec<Arc<RwLock<ClientVoice>>>>>,
     in_processing_clients_voices: Arc<RwLock<HashMap<u32, Arc<RwLock<ClientVoice>>>>>,
 }
 
 impl VoiceReceiver {
-    pub fn start_on(handler: &mut Call, output_hz: u32) -> VoiceReceiver {
+    pub fn start_on(handler: &mut Call) -> VoiceReceiver {
         let voice_receiver = VoiceReceiver {
-            output_hz,
             ids_map: Arc::new(Default::default()),
             for_taking_clients_voices: Arc::new(Default::default()),
             in_processing_clients_voices: Arc::new(Default::default()),
@@ -68,14 +64,6 @@ impl VoiceReceiver {
         handler.add_global_event(CoreEvent::DriverReconnect.into(), voice_receiver.clone());
 
         voice_receiver
-    }
-
-    pub fn default_start_on(handler: &mut Call) -> VoiceReceiver {
-        Self::start_on(handler, 16_000)
-    }
-
-    pub fn output_hz(&self) -> u32 {
-        self.output_hz
     }
 
     pub fn extract_voice(&self) -> Option<ReadVoiceContainer> {
@@ -130,10 +118,7 @@ impl VoiceReceiver {
                 in_processing_clients_voices.get(&data.packet.ssrc)
             {
                 let mut in_processing_client_voice = in_processing_client_voice.write().unwrap();
-                let audio = Audio::<Ch16, 2>::with_i16_buffer(48_000, audio.as_slice());
-                let mut audio = Audio::<Ch16, 1>::with_audio(self.output_hz, &audio);
-                let audio = audio.as_i16_slice();
-                in_processing_client_voice.chunks.push(Vec::from(audio));
+                in_processing_client_voice.chunks.push(audio.clone());
             }
         }
     }

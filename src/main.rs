@@ -1,8 +1,8 @@
-mod recognition;
+mod recognizer;
 mod red_alert_handler;
 mod voice_receiver;
 
-use recognition::*;
+use recognizer::*;
 use red_alert_handler::*;
 use voice_receiver::*;
 
@@ -162,7 +162,7 @@ async fn listen_for_red_alert(
     if conn_result.is_ok() {
         let mut handler = handler_lock.lock().await;
 
-        let voice_receiver = VoiceReceiver::default_start_on(handler.deref_mut());
+        let voice_receiver = VoiceReceiver::start_on(handler.deref_mut());
 
         let (tx, rx) = mpsc::sync_channel::<()>(1);
 
@@ -175,7 +175,12 @@ async fn listen_for_red_alert(
         let ctx = ctx.clone();
         let guild = guild.clone();
         tokio::spawn(async move {
-            let recognition_signal = start_recognition(5, recognition_model, voice_receiver);
+            let recognizer_signal = Recognizer {
+                workers_count: 5,
+                model: recognition_model,
+                voice_receiver,
+            }
+            .start();
             let mut session_kicked: HashSet<UserId> = HashSet::new();
             'root: loop {
                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -186,8 +191,8 @@ async fn listen_for_red_alert(
                     Err(TryRecvError::Empty) => {}
                 }
 
-                let worker_event = match recognition_signal.try_recv() {
-                    Ok(worker_event) => worker_event,
+                let recognizer_event = match recognizer_signal.try_recv() {
+                    Ok(recognizer_event) => recognizer_event,
                     Err(error) => match error {
                         TryRecvError::Empty => {
                             continue 'root;
@@ -198,8 +203,8 @@ async fn listen_for_red_alert(
                     },
                 };
 
-                match worker_event {
-                    RecognitionWorkerEvent::Event(_, user_id, recognition_event) => {
+                match recognizer_event.recognition_event {
+                    RecognitionEvent::Result(user_id, recognition_event) => {
                         if let Some(kick_user_id) = {
                             if let Some(user_id) = user_id {
                                 if !session_kicked.contains(&user_id) {
@@ -222,13 +227,13 @@ async fn listen_for_red_alert(
                             session_kicked.insert(kick_user_id);
                         }
                     }
-                    RecognitionWorkerEvent::Idle(_) => {}
-                    RecognitionWorkerEvent::Start(_, user_id) => {
+                    RecognitionEvent::Idle => {}
+                    RecognitionEvent::Start(user_id) => {
                         if let Some(user_id) = user_id {
                             session_kicked.remove(&user_id);
                         }
                     }
-                    RecognitionWorkerEvent::End(_, user_id) => {
+                    RecognitionEvent::End(user_id) => {
                         if let Some(user_id) = user_id {
                             session_kicked.remove(&user_id);
                         }
@@ -273,9 +278,7 @@ async fn process_red_alert(
     author_user_id: UserId,
     target_users_ids: Vec<UserId>,
 ) -> String {
-    let red_alert_result = red_alert_handler
-        .handle(ctx, guild, target_users_ids)
-        .await;
+    let red_alert_result = red_alert_handler.handle(ctx, guild, target_users_ids).await;
 
     match red_alert_result.len() {
         0 => {

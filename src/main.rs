@@ -1,8 +1,9 @@
 mod recognition;
+mod recognizer;
 mod red_alert_handler;
 mod voice_receiver;
 
-use recognition::*;
+use recognizer::*;
 use red_alert_handler::*;
 use voice_receiver::*;
 
@@ -15,11 +16,15 @@ use songbird::driver::DecodeMode;
 use songbird::{Config, SerenityInit};
 use std::collections::{HashMap, HashSet};
 use std::ops::DerefMut;
+use std::os::raw::c_int;
 use std::path::Path;
 use std::sync::mpsc::{SyncSender, TryRecvError};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
-use voskrust::api::Model;
+use voskrust::api::{Model as VoskModel, set_log_level as set_vosk_log_level};
+
+#[macro_use]
+extern crate log;
 
 fn is_sub<T: PartialEq>(first: &Vec<T>, second: &Vec<T>) -> bool {
     if second.is_empty() {
@@ -73,7 +78,7 @@ impl VoiceConfig {
 }
 
 struct Handler {
-    recognition_model: Model,
+    recognition_model: VoskModel,
     voice_config: VoiceConfig,
     red_alert_handler: Arc<RedAlertHandler>,
 }
@@ -84,7 +89,7 @@ impl EventHandler for Handler {
         if msg.author.bot {
             return;
         };
-        guard!(let Some(guild) = msg.guild(&ctx.cache).await else {
+        guard!(let Some(guild) = msg.guild(&ctx).await else {
             return
         });
         let message = msg.content.to_lowercase();
@@ -137,13 +142,13 @@ impl EventHandler for Handler {
         }
     }
     async fn ready(&self, _: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+        info!("{} is connected!", ready.user.name);
     }
 }
 
 async fn listen_for_red_alert(
     red_alert_handler: Arc<RedAlertHandler>,
-    recognition_model: &Model,
+    recognition_model: &VoskModel,
     voice_config: &VoiceConfig,
     ctx: &Context,
     guild: &Guild,
@@ -162,7 +167,7 @@ async fn listen_for_red_alert(
     if conn_result.is_ok() {
         let mut handler = handler_lock.lock().await;
 
-        let voice_receiver = VoiceReceiver::default_start_on(handler.deref_mut());
+        let voice_receiver = VoiceReceiver::new(handler.deref_mut(), 25);
 
         let (tx, rx) = mpsc::sync_channel::<()>(1);
 
@@ -175,7 +180,12 @@ async fn listen_for_red_alert(
         let ctx = ctx.clone();
         let guild = guild.clone();
         tokio::spawn(async move {
-            let recognition_signal = start_recognition(5, recognition_model, voice_receiver);
+            let recognizer_signal = Recognizer {
+                workers_count: 5,
+                model: recognition_model,
+                voice_receiver,
+            }
+            .start();
             let mut session_kicked: HashSet<UserId> = HashSet::new();
             'root: loop {
                 tokio::time::sleep(Duration::from_millis(10)).await;
@@ -186,8 +196,8 @@ async fn listen_for_red_alert(
                     Err(TryRecvError::Empty) => {}
                 }
 
-                let worker_event = match recognition_signal.try_recv() {
-                    Ok(worker_event) => worker_event,
+                let recognizer_event = match recognizer_signal.try_recv() {
+                    Ok(recognizer_event) => recognizer_event,
                     Err(error) => match error {
                         TryRecvError::Empty => {
                             continue 'root;
@@ -198,41 +208,64 @@ async fn listen_for_red_alert(
                     },
                 };
 
-                match worker_event {
-                    RecognitionWorkerEvent::Event(_, user_id, recognition_event) => {
-                        if let Some(kick_user_id) = {
-                            if let Some(user_id) = user_id {
-                                if !session_kicked.contains(&user_id) {
-                                    voice_config.should_kick(user_id, &recognition_event.text)
-                                } else {
-                                    None
-                                }
-                            } else {
-                                None
-                            }
-                        } {
-                            let red_alert_handler = red_alert_handler.clone();
-                            let ctx = ctx.clone();
-                            let guild = guild.clone();
-                            tokio::spawn(async move {
-                                red_alert_handler
-                                    .handle(&ctx, &guild, vec![kick_user_id])
-                                    .await;
-                            });
-                            session_kicked.insert(kick_user_id);
+                match recognizer_event.state {
+                    RecognizerState::RecognitionResult(user_id, result) => {
+                        info!(
+                            "[W:{}][UID:{}] Recognition RESULT is {:?}.",
+                            recognizer_event.worker_number, user_id.0, result
+                        );
+                        if session_kicked.contains(&user_id) {
+                            info!(
+                                "[W:{}][UID:{}] Recognition RESULT skipped, because user already kicked.",
+                                recognizer_event.worker_number, user_id.0
+                            );
+                            continue 'root;
                         }
+                        guard!(let Some(kick_user_id) =
+                            voice_config.should_kick(user_id, &result.text) else {
+                            info!(
+                                "[W:{}][UID:{}] Recognition RESULT skipped, because don't have restrictions.",
+                                recognizer_event.worker_number, user_id.0
+                            );
+                            continue 'root;
+                        });
+                        info!(
+                            "[W:{}][UID:{}] Recognition RESULT will be used for kick, because have restrictions.",
+                            recognizer_event.worker_number, user_id.0
+                        );
+                        session_kicked.insert(kick_user_id);
+                        let red_alert_handler = red_alert_handler.clone();
+                        let ctx = ctx.clone();
+                        let guild = guild.clone();
+                        tokio::spawn(async move {
+                            let red_alert_deportations_results = red_alert_handler
+                                .handle(&ctx, &guild, vec![kick_user_id])
+                                .await;
+                            let red_alert_deportation_result =
+                                red_alert_deportations_results.get(&kick_user_id).unwrap();
+                            info!(
+                                "[W:{}][UID:{}] Recognition RESULT used for kick, status is {:?}.",
+                                recognizer_event.worker_number,
+                                user_id.0,
+                                red_alert_deportation_result
+                            );
+                        });
                     }
-                    RecognitionWorkerEvent::Idle(_) => {}
-                    RecognitionWorkerEvent::Start(_, user_id) => {
-                        if let Some(user_id) = user_id {
-                            session_kicked.remove(&user_id);
-                        }
+                    RecognizerState::RecognitionStart(user_id) => {
+                        info!(
+                            "[W:{}][UID:{}] Recognition STARTED.",
+                            recognizer_event.worker_number, user_id.0
+                        );
+                        session_kicked.remove(&user_id);
                     }
-                    RecognitionWorkerEvent::End(_, user_id) => {
-                        if let Some(user_id) = user_id {
-                            session_kicked.remove(&user_id);
-                        }
+                    RecognizerState::RecognitionEnd(user_id) => {
+                        info!(
+                            "[W:{}][UID:{}] Recognition ENDED.",
+                            recognizer_event.worker_number, user_id.0
+                        );
+                        session_kicked.remove(&user_id);
                     }
+                    RecognizerState::Idle => {}
                 }
             }
         });
@@ -273,9 +306,7 @@ async fn process_red_alert(
     author_user_id: UserId,
     target_users_ids: Vec<UserId>,
 ) -> String {
-    let red_alert_result = red_alert_handler
-        .handle(ctx, guild, target_users_ids)
-        .await;
+    let red_alert_result = red_alert_handler.handle(ctx, guild, target_users_ids).await;
 
     match red_alert_result.len() {
         0 => {
@@ -363,24 +394,27 @@ async fn process_red_alert(
 
 #[tokio::main]
 async fn main() {
+    let _ = log4rs::init_file("log_config.yaml", Default::default());
+
     let settings = ConfigFile::builder()
-        .add_source(File::from(Path::new("red_alert_config.json")))
+        .add_source(File::from(Path::new("config.yaml")))
         .build()
-        .expect("You should setup file \"red_alert_config.json\"!");
+        .expect("You should setup file \"config.yaml\"!");
 
     let token = settings
-        .get_string("DISCORD_TOKEN")
+        .get_string("discord_token")
         .expect("Expected a token in the config!");
     let recognition_model_path = settings
-        .get_string("RECOGNITION_MODEL_PATH")
-        .expect("Expected a recognition model path in the environment!");
+        .get_string("recognition_model_path")
+        .expect("Expected a recognition model path in the config!");
+    let vosk_log_level = settings.get_int("vosk_log_level");
 
     let voice_settings = settings
-        .get_table("VOICE")
+        .get_table("voice")
         .expect("Expected a voice configuration in the config!");
 
     let target_words = voice_settings
-        .get("TARGET_WORDS")
+        .get("target_words")
         .expect("Expected a target words in the config!")
         .clone();
     let target_words: Vec<String> = target_words
@@ -388,7 +422,7 @@ async fn main() {
         .expect("Incorrect format of target words in the config!");
 
     let self_words = voice_settings
-        .get("SELF_WORDS")
+        .get("self_words")
         .expect("Expected a self words in the config!")
         .clone();
     let self_words: Vec<String> = self_words
@@ -396,16 +430,20 @@ async fn main() {
         .expect("Incorrect format of self words in the config!");
 
     let aliases = voice_settings
-        .get("ALIASES")
+        .get("aliases")
         .expect("Expected a aliases in the config!")
         .clone();
     let aliases: HashMap<String, u64> = aliases
         .try_deserialize()
         .expect("Incorrect format of aliases in the config!");
 
+    if let Ok(vosk_log_level) = vosk_log_level {
+        set_vosk_log_level(vosk_log_level as c_int);
+    }
+
     let mut client = Client::builder(&token)
         .event_handler(Handler {
-            recognition_model: Model::new(recognition_model_path.as_str())
+            recognition_model: VoskModel::new(recognition_model_path.as_str())
                 .expect("Incorrect recognition model!"),
             voice_config: VoiceConfig {
                 target_words,

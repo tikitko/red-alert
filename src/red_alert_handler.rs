@@ -1,6 +1,7 @@
 use serenity::model::prelude::*;
 use serenity::prelude::*;
 
+#[derive(Debug)]
 pub enum RedAlertDeportationResult {
     Deported,
     NotFound,

@@ -1,24 +1,43 @@
 # red-alert
 
-`libvosk.a`: https://github.com/tikitko/voskrust/blob/main/README.md
+VOSK Library `libvosk.a`: https://github.com/tikitko/voskrust/blob/main/README.md
 
 VOSK Models: https://alphacephei.com/vosk/models
 
-`red_alert_config.json`:
-```json
-{
-	"DISCORD_TOKEN": "",
-	"RECOGNITION_MODEL_PATH": "vosk-model-small-ru-0.22",
-	"VOICE": {
-		"TARGET_WORDS": [
-			"код красный"
-		],
-		"SELF_WORDS": [
-			"кикни меня"
-		],
-		"ALIASES": {
-			"имя": 111111111111111111
-		}
-	}
-}
+Red Alert Configuration `config.yaml`:
+```yaml
+discord_token: "DISCORD_TOKEN"
+recognition_model_path: "vosk-model-small-ru-0.22"
+vosk_log_level: -1
+voice:
+  target_words:
+    - "красная тревога"
+    - "код красный"
+  self_words:
+    - "запретное слово"
+    - "ты плохой"
+  aliases:
+    "алена": 111111111111111111
+    "вадим": 222222222222222222
+```
+
+(Optional) Red Alert Logging Configuration `log_config.yaml`:
+```yaml
+refresh_rate: 15 seconds
+appenders:
+  console:
+    kind: console
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S)} | {({l}):5.5} | {f}:{L} — {m}{n}"
+  info_file:
+    kind: file
+    path: "info.log"
+    encoder:
+      pattern: "{d(%Y-%m-%d %H:%M:%S)} | {({l}):5.5} | {f}:{L} — {m}{n}"
+loggers:
+  red_alert:
+    level: info
+    appenders:
+      - console
+      - info_file
 ```

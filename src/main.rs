@@ -21,9 +21,8 @@ use std::path::Path;
 use std::sync::mpsc::{SyncSender, TryRecvError};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
-use voskrust::api::Model;
+use voskrust::api::{Model as VoskModel, set_log_level as set_vosk_log_level};
 
-extern crate pretty_env_logger;
 #[macro_use]
 extern crate log;
 
@@ -79,7 +78,7 @@ impl VoiceConfig {
 }
 
 struct Handler {
-    recognition_model: Model,
+    recognition_model: VoskModel,
     voice_config: VoiceConfig,
     red_alert_handler: Arc<RedAlertHandler>,
 }
@@ -149,7 +148,7 @@ impl EventHandler for Handler {
 
 async fn listen_for_red_alert(
     red_alert_handler: Arc<RedAlertHandler>,
-    recognition_model: &Model,
+    recognition_model: &VoskModel,
     voice_config: &VoiceConfig,
     ctx: &Context,
     guild: &Guild,
@@ -212,27 +211,27 @@ async fn listen_for_red_alert(
                 match recognizer_event.state {
                     RecognizerState::RecognitionResult(user_id, result) => {
                         info!(
-                            "[{}] Recognition RESULT for {:?} is {:?}.",
-                            recognizer_event.worker_number, user_id, result
+                            "[W:{}][UID:{}] Recognition RESULT is {:?}.",
+                            recognizer_event.worker_number, user_id.0, result
                         );
                         if session_kicked.contains(&user_id) {
                             info!(
-                                "[{}] Recognition RESULT for {:?} SKIPPED, because user already kicked.",
-                                recognizer_event.worker_number, user_id
+                                "[W:{}][UID:{}] Recognition RESULT skipped, because user already kicked.",
+                                recognizer_event.worker_number, user_id.0
                             );
                             continue 'root;
                         }
                         guard!(let Some(kick_user_id) =
                             voice_config.should_kick(user_id, &result.text) else {
                             info!(
-                                "[{}] Recognition RESULT for {:?} SKIPPED, because don't have restrictions.",
-                                recognizer_event.worker_number, user_id
+                                "[W:{}][UID:{}] Recognition RESULT skipped, because don't have restrictions.",
+                                recognizer_event.worker_number, user_id.0
                             );
                             continue 'root;
                         });
                         info!(
-                            "[{}] Recognition RESULT for {:?} WILL BE USED to kick, because have restrictions.",
-                            recognizer_event.worker_number, user_id
+                            "[W:{}][UID:{}] Recognition RESULT will be used for kick, because have restrictions.",
+                            recognizer_event.worker_number, user_id.0
                         );
                         session_kicked.insert(kick_user_id);
                         let red_alert_handler = red_alert_handler.clone();
@@ -245,24 +244,24 @@ async fn listen_for_red_alert(
                             let red_alert_deportation_result =
                                 red_alert_deportations_results.get(&kick_user_id).unwrap();
                             info!(
-                                "[{}] Recognition RESULT for {:?} USED to kick, status is {:?}.",
+                                "[W:{}][UID:{}] Recognition RESULT used for kick, status is {:?}.",
                                 recognizer_event.worker_number,
-                                user_id,
+                                user_id.0,
                                 red_alert_deportation_result
                             );
                         });
                     }
                     RecognizerState::RecognitionStart(user_id) => {
                         info!(
-                            "[{}] Recognition STARTED for {:?}.",
-                            recognizer_event.worker_number, user_id
+                            "[W:{}][UID:{}] Recognition STARTED.",
+                            recognizer_event.worker_number, user_id.0
                         );
                         session_kicked.remove(&user_id);
                     }
                     RecognizerState::RecognitionEnd(user_id) => {
                         info!(
-                            "[{}] Recognition ENDED for {:?}.",
-                            recognizer_event.worker_number, user_id
+                            "[W:{}][UID:{}] Recognition ENDED.",
+                            recognizer_event.worker_number, user_id.0
                         );
                         session_kicked.remove(&user_id);
                     }
@@ -395,27 +394,27 @@ async fn process_red_alert(
 
 #[tokio::main]
 async fn main() {
-    pretty_env_logger::init();
+    let _ = log4rs::init_file("log_config.yaml", Default::default());
 
     let settings = ConfigFile::builder()
-        .add_source(File::from(Path::new("red_alert_config.json")))
+        .add_source(File::from(Path::new("config.yaml")))
         .build()
-        .expect("You should setup file \"red_alert_config.json\"!");
+        .expect("You should setup file \"config.yaml\"!");
 
     let token = settings
-        .get_string("DISCORD_TOKEN")
+        .get_string("discord_token")
         .expect("Expected a token in the config!");
     let recognition_model_path = settings
-        .get_string("RECOGNITION_MODEL_PATH")
+        .get_string("recognition_model_path")
         .expect("Expected a recognition model path in the config!");
-    let vosk_log_level = settings.get_int("VOSK_LOG_LEVEL");
+    let vosk_log_level = settings.get_int("vosk_log_level");
 
     let voice_settings = settings
-        .get_table("VOICE")
+        .get_table("voice")
         .expect("Expected a voice configuration in the config!");
 
     let target_words = voice_settings
-        .get("TARGET_WORDS")
+        .get("target_words")
         .expect("Expected a target words in the config!")
         .clone();
     let target_words: Vec<String> = target_words
@@ -423,7 +422,7 @@ async fn main() {
         .expect("Incorrect format of target words in the config!");
 
     let self_words = voice_settings
-        .get("SELF_WORDS")
+        .get("self_words")
         .expect("Expected a self words in the config!")
         .clone();
     let self_words: Vec<String> = self_words
@@ -431,7 +430,7 @@ async fn main() {
         .expect("Incorrect format of self words in the config!");
 
     let aliases = voice_settings
-        .get("ALIASES")
+        .get("aliases")
         .expect("Expected a aliases in the config!")
         .clone();
     let aliases: HashMap<String, u64> = aliases
@@ -439,12 +438,12 @@ async fn main() {
         .expect("Incorrect format of aliases in the config!");
 
     if let Ok(vosk_log_level) = vosk_log_level {
-        voskrust::api::set_log_level(vosk_log_level as c_int);
+        set_vosk_log_level(vosk_log_level as c_int);
     }
 
     let mut client = Client::builder(&token)
         .event_handler(Handler {
-            recognition_model: Model::new(recognition_model_path.as_str())
+            recognition_model: VoskModel::new(recognition_model_path.as_str())
                 .expect("Incorrect recognition model!"),
             voice_config: VoiceConfig {
                 target_words,

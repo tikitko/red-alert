@@ -30,7 +30,7 @@ pub struct Recognizer {
 impl Recognizer {
     pub fn start(self) -> Receiver<RecognizerEvent> {
         let (tx, rx) = mpsc::channel();
-        for worker_number in 1..self.workers_count {
+        for worker_index in 0..self.workers_count {
             let tx = tx.clone();
             let voice_receiver = self.voice_receiver.clone();
             let model = self.model.clone();
@@ -38,7 +38,7 @@ impl Recognizer {
                 thread::sleep(Duration::from_millis(500));
                 let send_state = |state| -> bool {
                     tx.send(RecognizerEvent {
-                        worker_number,
+                        worker_number: worker_index + 1,
                         state,
                     })
                     .is_ok()

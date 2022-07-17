@@ -1,3 +1,4 @@
+mod recognition;
 mod recognizer;
 mod red_alert_handler;
 mod voice_receiver;
@@ -20,6 +21,10 @@ use std::sync::mpsc::{SyncSender, TryRecvError};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
 use voskrust::api::Model;
+
+extern crate pretty_env_logger;
+#[macro_use]
+extern crate log;
 
 fn is_sub<T: PartialEq>(first: &Vec<T>, second: &Vec<T>) -> bool {
     if second.is_empty() {
@@ -203,15 +208,12 @@ async fn listen_for_red_alert(
                     },
                 };
 
-                match recognizer_event.recognition_event {
-                    RecognitionEvent::Result(user_id, recognition_event) => {
+                info!("{:?}", recognizer_event);
+                match recognizer_event.state {
+                    RecognizerState::RecognitionResult(user_id, recognition_event) => {
                         if let Some(kick_user_id) = {
-                            if let Some(user_id) = user_id {
-                                if !session_kicked.contains(&user_id) {
-                                    voice_config.should_kick(user_id, &recognition_event.text)
-                                } else {
-                                    None
-                                }
+                            if !session_kicked.contains(&user_id) {
+                                voice_config.should_kick(user_id, &recognition_event.text)
                             } else {
                                 None
                             }
@@ -227,17 +229,13 @@ async fn listen_for_red_alert(
                             session_kicked.insert(kick_user_id);
                         }
                     }
-                    RecognitionEvent::Idle => {}
-                    RecognitionEvent::Start(user_id) => {
-                        if let Some(user_id) = user_id {
-                            session_kicked.remove(&user_id);
-                        }
+                    RecognizerState::RecognitionStart(user_id) => {
+                        session_kicked.remove(&user_id);
                     }
-                    RecognitionEvent::End(user_id) => {
-                        if let Some(user_id) = user_id {
-                            session_kicked.remove(&user_id);
-                        }
+                    RecognizerState::RecognitionEnd(user_id) => {
+                        session_kicked.remove(&user_id);
                     }
+                    RecognizerState::Idle => {}
                 }
             }
         });
@@ -366,6 +364,8 @@ async fn process_red_alert(
 
 #[tokio::main]
 async fn main() {
+    pretty_env_logger::init_custom_env("RED_ALERT_LOG");
+
     let settings = ConfigFile::builder()
         .add_source(File::from(Path::new("red_alert_config.json")))
         .build()

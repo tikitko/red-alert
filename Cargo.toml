@@ -4,6 +4,8 @@ version = "0.0.5"
 edition = "2021"
 
 [dependencies]
+log = "0.4"
+pretty_env_logger = "0.4"
 guard = "0.5.1"
 bimap = "0.6.2"
 config = "0.13.1"

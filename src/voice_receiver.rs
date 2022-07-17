@@ -8,12 +8,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, RwLock, RwLockReadGuard};
 
 pub struct ReadVoiceContainer {
-    client_user_id: Option<UserId>,
+    client_user_id: UserId,
     client_voice: Arc<RwLock<ClientVoice>>,
 }
 
 impl ReadVoiceContainer {
-    pub fn user_id(&self) -> Option<UserId> {
+    pub fn user_id(&self) -> UserId {
         self.client_user_id
     }
     pub fn read_lock(&self) -> RwLockReadGuard<ClientVoice> {
@@ -66,19 +66,24 @@ impl VoiceReceiver {
         voice_receiver
     }
 
-    pub fn extract_voice(&self) -> Option<ReadVoiceContainer> {
+    pub fn next_voice(&self) -> Option<ReadVoiceContainer> {
         let ids_map = self.ids_map.read().unwrap();
         let mut clients_voices = self.for_taking_clients_voices.write().unwrap();
-        if clients_voices.len() > 0 {
-            let client_voice = clients_voices.remove(0);
-            let client_voice_id = client_voice.read().unwrap().id;
-            let client_user_id = ids_map.get_by_left(&client_voice_id).cloned();
-            Some(ReadVoiceContainer {
-                client_user_id,
-                client_voice,
-            })
-        } else {
-            None
+        loop {
+            if clients_voices.len() > 0 {
+                let client_voice = clients_voices.remove(0);
+                let client_voice_id = client_voice.read().unwrap().id;
+                if let Some(client_user_id) = ids_map.get_by_left(&client_voice_id) {
+                    return Some(ReadVoiceContainer {
+                        client_user_id: client_user_id.clone(),
+                        client_voice,
+                    });
+                } else {
+                    continue;
+                }
+            } else {
+                return None;
+            }
         }
     }
 

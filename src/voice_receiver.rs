@@ -114,8 +114,7 @@ impl VoiceReceiver {
     fn update_for_voice_data(&self, data: &VoiceData) {
         if let Some(audio) = data.audio {
             let processing_clients_voices = self.processing_clients_voices.read().unwrap();
-            if let Some(processing_client_voice) =
-                processing_clients_voices.get(&data.packet.ssrc)
+            if let Some(processing_client_voice) = processing_clients_voices.get(&data.packet.ssrc)
             {
                 let mut processing_client_voice = processing_client_voice.write().unwrap();
                 processing_client_voice.chunks.push(audio.clone());

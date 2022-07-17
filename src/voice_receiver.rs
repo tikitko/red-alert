@@ -69,22 +69,17 @@ impl VoiceReceiver {
     pub fn next_voice(&self) -> Option<ReadVoiceContainer> {
         let ids_map = self.ids_map.read().unwrap();
         let mut clients_voices = self.for_taking_clients_voices.write().unwrap();
-        loop {
-            if clients_voices.len() > 0 {
-                let client_voice = clients_voices.remove(0);
-                let client_voice_id = client_voice.read().unwrap().id;
-                if let Some(client_user_id) = ids_map.get_by_left(&client_voice_id) {
-                    return Some(ReadVoiceContainer {
-                        client_user_id: client_user_id.clone(),
-                        client_voice,
-                    });
-                } else {
-                    continue;
-                }
-            } else {
-                return None;
+        for index in 0..clients_voices.len() {
+            let client_voice = &clients_voices[index];
+            let client_voice_id = client_voice.read().unwrap().id;
+            if let Some(client_user_id) = ids_map.get_by_left(&client_voice_id) {
+                return Some(ReadVoiceContainer {
+                    client_user_id: client_user_id.clone(),
+                    client_voice: clients_voices.remove(index),
+                });
             }
         }
+        None
     }
 
     fn update_for_speaking(&self, speaking: &Speaking) {
@@ -155,13 +150,34 @@ impl VoiceEventHandler for VoiceReceiver {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
         use EventContext as Ctx;
         match ctx {
-            Ctx::SpeakingStateUpdate(speaking) => self.update_for_speaking(speaking),
-            Ctx::SpeakingUpdate(data) => self.update_for_speaking_update_data(data),
-            Ctx::VoicePacket(data) => self.update_for_voice_data(data),
-            Ctx::ClientDisconnect(disconnect) => self.update_for_disconnect(disconnect),
-            Ctx::DriverConnect(data) => self.reset_in_processing(),
-            Ctx::DriverDisconnect(data) => self.reset_in_processing(),
-            Ctx::DriverReconnect(data) => self.reset_in_processing(),
+            Ctx::SpeakingStateUpdate(speaking) => {
+                debug!("VoiceEvent SpeakingStateUpdate: {:?}.", speaking);
+                self.update_for_speaking(speaking);
+            }
+            Ctx::SpeakingUpdate(data) => {
+                debug!("VoiceEvent SpeakingUpdate: {:?}.", data);
+                self.update_for_speaking_update_data(data);
+            }
+            Ctx::VoicePacket(data) => {
+                debug!("VoiceEvent VoicePacket: {:?}.", data);
+                self.update_for_voice_data(data);
+            }
+            Ctx::ClientDisconnect(disconnect) => {
+                debug!("VoiceEvent ClientDisconnect: {:?}.", disconnect);
+                self.update_for_disconnect(disconnect);
+            }
+            Ctx::DriverConnect(data) => {
+                debug!("VoiceEvent DriverConnect: {:?}.", data);
+                self.reset_in_processing();
+            }
+            Ctx::DriverDisconnect(data) => {
+                debug!("VoiceEvent DriverDisconnect: {:?}.", data);
+                self.reset_in_processing();
+            }
+            Ctx::DriverReconnect(data) => {
+                debug!("VoiceEvent DriverReconnect: {:?}.", data);
+                self.reset_in_processing();
+            }
             _ => unimplemented!(),
         }
         None

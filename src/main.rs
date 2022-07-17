@@ -142,7 +142,7 @@ impl EventHandler for Handler {
         }
     }
     async fn ready(&self, _: Context, ready: Ready) {
-        println!("{} is connected!", ready.user.name);
+        info!("{} is connected!", ready.user.name);
     }
 }
 
@@ -208,31 +208,61 @@ async fn listen_for_red_alert(
                     },
                 };
 
-                info!("{:?}", recognizer_event);
                 match recognizer_event.state {
-                    RecognizerState::RecognitionResult(user_id, recognition_event) => {
-                        if let Some(kick_user_id) = {
-                            if !session_kicked.contains(&user_id) {
-                                voice_config.should_kick(user_id, &recognition_event.text)
-                            } else {
-                                None
-                            }
-                        } {
-                            let red_alert_handler = red_alert_handler.clone();
-                            let ctx = ctx.clone();
-                            let guild = guild.clone();
-                            tokio::spawn(async move {
-                                red_alert_handler
-                                    .handle(&ctx, &guild, vec![kick_user_id])
-                                    .await;
-                            });
-                            session_kicked.insert(kick_user_id);
+                    RecognizerState::RecognitionResult(user_id, result) => {
+                        info!(
+                            "[{}] Recognition RESULT for {:?} is {:?}.",
+                            recognizer_event.worker_number, user_id, result
+                        );
+                        if session_kicked.contains(&user_id) {
+                            info!(
+                                "[{}] Recognition RESULT for {:?} SKIPPED, because user already kicked.",
+                                recognizer_event.worker_number, user_id
+                            );
+                            continue 'root;
                         }
+                        guard!(let Some(kick_user_id) =
+                            voice_config.should_kick(user_id, &result.text) else {
+                            info!(
+                                "[{}] Recognition RESULT for {:?} SKIPPED, because don't have restrictions.",
+                                recognizer_event.worker_number, user_id
+                            );
+                            continue 'root;
+                        });
+                        info!(
+                            "[{}] Recognition RESULT for {:?} WILL BE USED to kick, because have restrictions.",
+                            recognizer_event.worker_number, user_id
+                        );
+                        session_kicked.insert(kick_user_id);
+                        let red_alert_handler = red_alert_handler.clone();
+                        let ctx = ctx.clone();
+                        let guild = guild.clone();
+                        tokio::spawn(async move {
+                            let red_alert_deportations_results = red_alert_handler
+                                .handle(&ctx, &guild, vec![kick_user_id])
+                                .await;
+                            let red_alert_deportation_result =
+                                red_alert_deportations_results.get(&kick_user_id).unwrap();
+                            info!(
+                                "[{}] Recognition RESULT for {:?} USED to kick, status is {:?}.",
+                                recognizer_event.worker_number,
+                                user_id,
+                                red_alert_deportation_result
+                            );
+                        });
                     }
                     RecognizerState::RecognitionStart(user_id) => {
+                        info!(
+                            "[{}] Recognition STARTED for {:?}.",
+                            recognizer_event.worker_number, user_id
+                        );
                         session_kicked.remove(&user_id);
                     }
                     RecognizerState::RecognitionEnd(user_id) => {
+                        info!(
+                            "[{}] Recognition ENDED for {:?}.",
+                            recognizer_event.worker_number, user_id
+                        );
                         session_kicked.remove(&user_id);
                     }
                     RecognizerState::Idle => {}
@@ -364,7 +394,7 @@ async fn process_red_alert(
 
 #[tokio::main]
 async fn main() {
-    pretty_env_logger::init_custom_env("RED_ALERT_LOG");
+    pretty_env_logger::init();
 
     let settings = ConfigFile::builder()
         .add_source(File::from(Path::new("red_alert_config.json")))

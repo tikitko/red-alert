@@ -27,16 +27,6 @@ pub struct ClientVoice {
     pub is_completed: bool,
 }
 
-impl ClientVoice {
-    fn empty_for_id(id: u32) -> Self {
-        ClientVoice {
-            id,
-            chunks: vec![],
-            is_completed: false,
-        }
-    }
-}
-
 #[derive(Clone)]
 pub struct VoiceReceiver {
     ids_map: Arc<RwLock<BiMap<u32, UserId>>>,
@@ -45,10 +35,10 @@ pub struct VoiceReceiver {
 }
 
 impl VoiceReceiver {
-    pub fn start_on(handler: &mut Call) -> VoiceReceiver {
+    pub fn new(handler: &mut Call, queue_size: usize) -> VoiceReceiver {
         let voice_receiver = VoiceReceiver {
             ids_map: Arc::new(Default::default()),
-            queue_clients_voices: Arc::new(Default::default()),
+            queue_clients_voices: Arc::new(RwLock::new(Vec::with_capacity(queue_size))),
             processing_clients_voices: Arc::new(Default::default()),
         };
 
@@ -103,9 +93,16 @@ impl VoiceReceiver {
         } else {
             if data.speaking {
                 let mut queue_clients_voices = self.queue_clients_voices.write().unwrap();
-                let client_voice = ClientVoice::empty_for_id(data.ssrc);
+                let client_voice = ClientVoice {
+                    id: data.ssrc,
+                    chunks: vec![],
+                    is_completed: false,
+                };
                 let client_voice = Arc::new(RwLock::new(client_voice));
                 processing_clients_voices.insert(data.ssrc, client_voice.clone());
+                if queue_clients_voices.len() >= queue_clients_voices.capacity() {
+                    queue_clients_voices.remove(0);
+                }
                 queue_clients_voices.push(client_voice);
             }
         }

@@ -16,6 +16,7 @@ use songbird::driver::DecodeMode;
 use songbird::{Config, SerenityInit};
 use std::collections::{HashMap, HashSet};
 use std::ops::DerefMut;
+use std::os::raw::c_int;
 use std::path::Path;
 use std::sync::mpsc::{SyncSender, TryRecvError};
 use std::sync::{mpsc, Arc};
@@ -167,7 +168,7 @@ async fn listen_for_red_alert(
     if conn_result.is_ok() {
         let mut handler = handler_lock.lock().await;
 
-        let voice_receiver = VoiceReceiver::start_on(handler.deref_mut());
+        let voice_receiver = VoiceReceiver::new(handler.deref_mut(), 25);
 
         let (tx, rx) = mpsc::sync_channel::<()>(1);
 
@@ -406,7 +407,8 @@ async fn main() {
         .expect("Expected a token in the config!");
     let recognition_model_path = settings
         .get_string("RECOGNITION_MODEL_PATH")
-        .expect("Expected a recognition model path in the environment!");
+        .expect("Expected a recognition model path in the config!");
+    let vosk_log_level = settings.get_int("VOSK_LOG_LEVEL");
 
     let voice_settings = settings
         .get_table("VOICE")
@@ -435,6 +437,10 @@ async fn main() {
     let aliases: HashMap<String, u64> = aliases
         .try_deserialize()
         .expect("Incorrect format of aliases in the config!");
+
+    if let Ok(vosk_log_level) = vosk_log_level {
+        voskrust::api::set_log_level(vosk_log_level as c_int);
+    }
 
     let mut client = Client::builder(&token)
         .event_handler(Handler {

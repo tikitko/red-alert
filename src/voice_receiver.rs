@@ -40,16 +40,16 @@ impl ClientVoice {
 #[derive(Clone)]
 pub struct VoiceReceiver {
     ids_map: Arc<RwLock<BiMap<u32, UserId>>>,
-    for_taking_clients_voices: Arc<RwLock<Vec<Arc<RwLock<ClientVoice>>>>>,
-    in_processing_clients_voices: Arc<RwLock<HashMap<u32, Arc<RwLock<ClientVoice>>>>>,
+    queue_clients_voices: Arc<RwLock<Vec<Arc<RwLock<ClientVoice>>>>>,
+    processing_clients_voices: Arc<RwLock<HashMap<u32, Arc<RwLock<ClientVoice>>>>>,
 }
 
 impl VoiceReceiver {
     pub fn start_on(handler: &mut Call) -> VoiceReceiver {
         let voice_receiver = VoiceReceiver {
             ids_map: Arc::new(Default::default()),
-            for_taking_clients_voices: Arc::new(Default::default()),
-            in_processing_clients_voices: Arc::new(Default::default()),
+            queue_clients_voices: Arc::new(Default::default()),
+            processing_clients_voices: Arc::new(Default::default()),
         };
 
         handler.add_global_event(
@@ -68,14 +68,14 @@ impl VoiceReceiver {
 
     pub fn next_voice(&self) -> Option<ReadVoiceContainer> {
         let ids_map = self.ids_map.read().unwrap();
-        let mut clients_voices = self.for_taking_clients_voices.write().unwrap();
-        for index in 0..clients_voices.len() {
-            let client_voice = &clients_voices[index];
+        let mut queue_clients_voices = self.queue_clients_voices.write().unwrap();
+        for index in 0..queue_clients_voices.len() {
+            let client_voice = &queue_clients_voices[index];
             let client_voice_id = client_voice.read().unwrap().id;
             if let Some(client_user_id) = ids_map.get_by_left(&client_voice_id) {
                 return Some(ReadVoiceContainer {
                     client_user_id: client_user_id.clone(),
-                    client_voice: clients_voices.remove(index),
+                    client_voice: queue_clients_voices.remove(index),
                 });
             }
         }
@@ -92,55 +92,55 @@ impl VoiceReceiver {
     }
 
     fn update_for_speaking_update_data(&self, data: &SpeakingUpdateData) {
-        let mut in_processing_clients_voices = self.in_processing_clients_voices.write().unwrap();
-        if let Some(in_processing_client_voice) = in_processing_clients_voices.remove(&data.ssrc) {
+        let mut processing_clients_voices = self.processing_clients_voices.write().unwrap();
+        if let Some(processing_client_voice) = processing_clients_voices.remove(&data.ssrc) {
             if !data.speaking {
-                let mut in_processing_client_voice = in_processing_client_voice.write().unwrap();
-                in_processing_client_voice.is_completed = true
+                let mut processing_client_voice = processing_client_voice.write().unwrap();
+                processing_client_voice.is_completed = true
             } else {
-                in_processing_clients_voices.insert(data.ssrc, in_processing_client_voice);
+                processing_clients_voices.insert(data.ssrc, processing_client_voice);
             }
         } else {
             if data.speaking {
-                let mut for_taking_clients_voices = self.for_taking_clients_voices.write().unwrap();
+                let mut queue_clients_voices = self.queue_clients_voices.write().unwrap();
                 let client_voice = ClientVoice::empty_for_id(data.ssrc);
                 let client_voice = Arc::new(RwLock::new(client_voice));
-                in_processing_clients_voices.insert(data.ssrc, client_voice.clone());
-                for_taking_clients_voices.push(client_voice);
+                processing_clients_voices.insert(data.ssrc, client_voice.clone());
+                queue_clients_voices.push(client_voice);
             }
         }
     }
 
     fn update_for_voice_data(&self, data: &VoiceData) {
         if let Some(audio) = data.audio {
-            let in_processing_clients_voices = self.in_processing_clients_voices.read().unwrap();
-            if let Some(in_processing_client_voice) =
-                in_processing_clients_voices.get(&data.packet.ssrc)
+            let processing_clients_voices = self.processing_clients_voices.read().unwrap();
+            if let Some(processing_client_voice) =
+                processing_clients_voices.get(&data.packet.ssrc)
             {
-                let mut in_processing_client_voice = in_processing_client_voice.write().unwrap();
-                in_processing_client_voice.chunks.push(audio.clone());
+                let mut processing_client_voice = processing_client_voice.write().unwrap();
+                processing_client_voice.chunks.push(audio.clone());
             }
         }
     }
 
     fn update_for_disconnect(&self, disconnect: &ClientDisconnect) {
-        let mut in_processing_clients_voices = self.in_processing_clients_voices.write().unwrap();
+        let mut processing_clients_voices = self.processing_clients_voices.write().unwrap();
         let mut ids_map = self.ids_map.write().unwrap();
         if let Some((ssrc, _)) = ids_map.remove_by_right(&UserId(disconnect.user_id.0)) {
-            if let Some(in_processing_client_voice) = in_processing_clients_voices.remove(&ssrc) {
-                let mut in_processing_client_voice = in_processing_client_voice.write().unwrap();
-                in_processing_client_voice.is_completed = true
+            if let Some(processing_client_voice) = processing_clients_voices.remove(&ssrc) {
+                let mut processing_client_voice = processing_client_voice.write().unwrap();
+                processing_client_voice.is_completed = true
             }
         }
     }
 
     fn reset_in_processing(&self) {
-        let mut in_processing_clients_voices = self.in_processing_clients_voices.write().unwrap();
-        for (_, in_processing_client_voice) in in_processing_clients_voices.iter() {
-            let mut in_processing_client_voice = in_processing_client_voice.write().unwrap();
-            in_processing_client_voice.is_completed = true
+        let mut processing_clients_voices = self.processing_clients_voices.write().unwrap();
+        for (_, processing_client_voice) in processing_clients_voices.iter() {
+            let mut processing_client_voice = processing_client_voice.write().unwrap();
+            processing_client_voice.is_completed = true
         }
-        in_processing_clients_voices.clear();
+        processing_clients_voices.clear();
     }
 }
 

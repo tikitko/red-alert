@@ -89,7 +89,7 @@ impl EventHandler for Handler {
         if msg.author.bot {
             return;
         };
-        guard!(let Some(guild) = msg.guild(&ctx.cache).await else {
+        guard!(let Some(guild) = msg.guild(&ctx).await else {
             return
         });
         let message = msg.content.to_lowercase();

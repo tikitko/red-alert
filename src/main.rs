@@ -9,7 +9,8 @@ use voice_receiver::*;
 
 use config::{Config as ConfigFile, File};
 use guard::guard;
-use serenity::model::prelude::{ChannelId, Guild, Message, Ready, UserId};
+use serenity::model::id::GuildId;
+use serenity::model::prelude::{ChannelId, Message, Ready, UserId};
 use serenity::prelude::{Context, EventHandler, Mentionable, TypeMapKey};
 use serenity::{async_trait, Client};
 use songbird::driver::DecodeMode;
@@ -21,7 +22,7 @@ use std::path::Path;
 use std::sync::mpsc::{SyncSender, TryRecvError};
 use std::sync::{mpsc, Arc};
 use std::time::Duration;
-use voskrust::api::{Model as VoskModel, set_log_level as set_vosk_log_level};
+use voskrust::api::{set_log_level as set_vosk_log_level, Model as VoskModel};
 
 #[macro_use]
 extern crate log;
@@ -89,7 +90,7 @@ impl EventHandler for Handler {
         if msg.author.bot {
             return;
         };
-        guard!(let Some(guild) = msg.guild(&ctx).await else {
+        guard!(let Some(guild_id) = msg.guild_id else {
             return
         });
         let message = msg.content.to_lowercase();
@@ -113,7 +114,7 @@ impl EventHandler for Handler {
                     &self.recognition_model,
                     &self.voice_config,
                     &ctx,
-                    &guild,
+                    guild_id,
                     possible_channel_id,
                 )
                 .await
@@ -122,14 +123,14 @@ impl EventHandler for Handler {
             }
         } else if is_sub(&message_words, &vec!["прекратить", "код", "красный"])
         {
-            exit_for_red_alert(&ctx, &guild).await
+            exit_for_red_alert(&ctx, guild_id).await
         } else if is_sub(&message_words, &vec!["код", "красный"]) {
             let author_id = msg.author.id;
             let target_users_ids: Vec<UserId> = msg.mentions.iter().map(|u| u.id).collect();
             process_red_alert(
                 self.red_alert_handler.clone(),
                 &ctx,
-                &guild,
+                guild_id,
                 author_id,
                 target_users_ids,
             )
@@ -151,11 +152,10 @@ async fn listen_for_red_alert(
     recognition_model: &VoskModel,
     voice_config: &VoiceConfig,
     ctx: &Context,
-    guild: &Guild,
+    guild_id: GuildId,
     channel_id: ChannelId,
 ) -> String {
     let channel_name = channel_id.mention();
-    let guild_id = guild.id;
 
     let manager = songbird::get(ctx)
         .await
@@ -178,7 +178,6 @@ async fn listen_for_red_alert(
         let recognition_model = recognition_model.clone();
         let voice_config = voice_config.clone();
         let ctx = ctx.clone();
-        let guild = guild.clone();
         tokio::spawn(async move {
             let recognizer_signal = Recognizer {
                 workers_count: 5,
@@ -236,10 +235,9 @@ async fn listen_for_red_alert(
                         session_kicked.insert(kick_user_id);
                         let red_alert_handler = red_alert_handler.clone();
                         let ctx = ctx.clone();
-                        let guild = guild.clone();
                         tokio::spawn(async move {
                             let red_alert_deportations_results = red_alert_handler
-                                .handle(&ctx, &guild, vec![kick_user_id])
+                                .handle(&ctx, guild_id, vec![kick_user_id])
                                 .await;
                             let red_alert_deportation_result =
                                 red_alert_deportations_results.get(&kick_user_id).unwrap();
@@ -276,9 +274,7 @@ async fn listen_for_red_alert(
     }
 }
 
-async fn exit_for_red_alert(ctx: &Context, guild: &Guild) -> String {
-    let guild_id = guild.id;
-
+async fn exit_for_red_alert(ctx: &Context, guild_id: GuildId) -> String {
     let manager = songbird::get(ctx)
         .await
         .expect("Songbird Voice client placed in at initialisation.")
@@ -302,16 +298,18 @@ async fn exit_for_red_alert(ctx: &Context, guild: &Guild) -> String {
 async fn process_red_alert(
     red_alert_handler: Arc<RedAlertHandler>,
     ctx: &Context,
-    guild: &Guild,
+    guild_id: GuildId,
     author_user_id: UserId,
     target_users_ids: Vec<UserId>,
 ) -> String {
-    let red_alert_result = red_alert_handler.handle(ctx, guild, target_users_ids).await;
+    let red_alert_result = red_alert_handler
+        .handle(ctx, guild_id, target_users_ids)
+        .await;
 
     match red_alert_result.len() {
         0 => {
             if let Some(result) = red_alert_handler
-                .handle(ctx, guild, vec![author_user_id])
+                .handle(ctx, guild_id, vec![author_user_id])
                 .await
                 .get(&author_user_id)
             {
@@ -332,7 +330,7 @@ async fn process_red_alert(
                     RedAlertDeportationResult::NotFound => {
                         if let Some(result) = red_alert_handler.handle(
                             ctx,
-                            guild,
+                            guild_id,
                             vec![author_user_id]
                         )
                             .await
@@ -375,7 +373,7 @@ async fn process_red_alert(
                 format!("ОУ, МАССОВЫЙ КОД КРАСНЫЙ? СТАТУС ВЫКОСА КРИНЖОВИКОВ:\n{result_string}")
             } else {
                 if let Some(result) = red_alert_handler
-                    .handle(ctx, guild, vec![author_user_id])
+                    .handle(ctx, guild_id, vec![author_user_id])
                     .await
                     .get(&author_user_id)
                 {
@@ -404,9 +402,9 @@ async fn main() {
     let token = settings
         .get_string("discord_token")
         .expect("Expected a token in the config!");
-    let recognition_model_path = settings
-        .get_string("recognition_model_path")
-        .expect("Expected a recognition model path in the config!");
+    let vosk_model_path = settings
+        .get_string("vosk_model_path")
+        .expect("Expected a VOSK model path in the config!");
     let vosk_log_level = settings.get_int("vosk_log_level");
 
     let voice_settings = settings
@@ -443,7 +441,7 @@ async fn main() {
 
     let mut client = Client::builder(&token)
         .event_handler(Handler {
-            recognition_model: VoskModel::new(recognition_model_path.as_str())
+            recognition_model: VoskModel::new(vosk_model_path.as_str())
                 .expect("Incorrect recognition model!"),
             voice_config: VoiceConfig {
                 target_words,

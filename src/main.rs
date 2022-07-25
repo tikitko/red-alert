@@ -402,9 +402,9 @@ async fn main() {
     let token = settings
         .get_string("discord_token")
         .expect("Expected a token in the config!");
-    let recognition_model_path = settings
-        .get_string("recognition_model_path")
-        .expect("Expected a recognition model path in the config!");
+    let vosk_model_path = settings
+        .get_string("vosk_model_path")
+        .expect("Expected a VOSK model path in the config!");
     let vosk_log_level = settings.get_int("vosk_log_level");
 
     let voice_settings = settings
@@ -441,7 +441,7 @@ async fn main() {
 
     let mut client = Client::builder(&token)
         .event_handler(Handler {
-            recognition_model: VoskModel::new(recognition_model_path.as_str())
+            recognition_model: VoskModel::new(vosk_model_path.as_str())
                 .expect("Incorrect recognition model!"),
             voice_config: VoiceConfig {
                 target_words,

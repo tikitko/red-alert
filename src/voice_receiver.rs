@@ -45,33 +45,30 @@ impl Default for VoiceReceiverConfiguration {
 
 #[derive(Clone)]
 pub struct VoiceReceiver {
-    configuration: VoiceReceiverConfiguration,
+    configuration: Arc<VoiceReceiverConfiguration>,
     ids_map: Arc<RwLock<BiMap<u32, UserId>>>,
     queue_clients_voices: Arc<RwLock<LinkedList<Arc<RwLock<ClientVoice>>>>>,
     processing_clients_voices: Arc<Mutex<HashMap<u32, Arc<RwLock<ClientVoice>>>>>,
 }
 
 impl VoiceReceiver {
-    pub fn new(handler: &mut Call, configuration: VoiceReceiverConfiguration) -> VoiceReceiver {
-        let voice_receiver = VoiceReceiver {
-            configuration,
+    pub fn with_configuration(configuration: VoiceReceiverConfiguration) -> VoiceReceiver {
+        Self {
+            configuration: Arc::new(configuration),
             ids_map: Arc::new(Default::default()),
             queue_clients_voices: Arc::new(Default::default()),
             processing_clients_voices: Arc::new(Default::default()),
-        };
+        }
+    }
 
-        handler.add_global_event(
-            CoreEvent::SpeakingStateUpdate.into(),
-            voice_receiver.clone(),
-        );
-        handler.add_global_event(CoreEvent::SpeakingUpdate.into(), voice_receiver.clone());
-        handler.add_global_event(CoreEvent::VoicePacket.into(), voice_receiver.clone());
-        handler.add_global_event(CoreEvent::ClientDisconnect.into(), voice_receiver.clone());
-        handler.add_global_event(CoreEvent::DriverConnect.into(), voice_receiver.clone());
-        handler.add_global_event(CoreEvent::DriverDisconnect.into(), voice_receiver.clone());
-        handler.add_global_event(CoreEvent::DriverReconnect.into(), voice_receiver.clone());
-
-        voice_receiver
+    pub fn subscribe(&self, handler: &mut Call) {
+        handler.add_global_event(CoreEvent::SpeakingStateUpdate.into(), self.clone());
+        handler.add_global_event(CoreEvent::SpeakingUpdate.into(), self.clone());
+        handler.add_global_event(CoreEvent::VoicePacket.into(), self.clone());
+        handler.add_global_event(CoreEvent::ClientDisconnect.into(), self.clone());
+        handler.add_global_event(CoreEvent::DriverConnect.into(), self.clone());
+        handler.add_global_event(CoreEvent::DriverDisconnect.into(), self.clone());
+        handler.add_global_event(CoreEvent::DriverReconnect.into(), self.clone());
     }
 
     pub fn next_voice(&self) -> Option<ReadVoiceContainer> {
@@ -172,7 +169,6 @@ impl VoiceReceiver {
 
 #[async_trait]
 impl VoiceEventHandler for VoiceReceiver {
-    #[allow(unused_variables)]
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
         use EventContext as Ctx;
         match ctx {

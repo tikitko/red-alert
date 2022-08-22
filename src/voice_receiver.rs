@@ -47,7 +47,7 @@ impl Default for VoiceReceiverConfiguration {
 pub struct VoiceReceiver {
     configuration: Arc<VoiceReceiverConfiguration>,
     ids_map: Arc<RwLock<BiMap<u32, UserId>>>,
-    queue_clients_voices: Arc<RwLock<LinkedList<Arc<RwLock<ClientVoice>>>>>,
+    queue_clients_voices: Arc<Mutex<LinkedList<Arc<RwLock<ClientVoice>>>>>,
     processing_clients_voices: Arc<Mutex<HashMap<u32, Arc<RwLock<ClientVoice>>>>>,
 }
 
@@ -73,7 +73,7 @@ impl VoiceReceiver {
 
     pub fn next_voice(&self) -> Option<ReadVoiceContainer> {
         let ids_map = self.ids_map.read().unwrap();
-        let mut queue_clients_voices = self.queue_clients_voices.write().unwrap();
+        let mut queue_clients_voices = self.queue_clients_voices.lock().unwrap();
         let mut voices_to_revert: Vec<Arc<RwLock<ClientVoice>>> = vec![];
         let mut read_voice_container_to_return: Option<ReadVoiceContainer> = None;
         while let Some(client_voice) = queue_clients_voices.pop_front() {
@@ -95,7 +95,7 @@ impl VoiceReceiver {
     }
 
     fn create_voice_in_queue(&self, ssrc: u32) -> Arc<RwLock<ClientVoice>> {
-        let mut queue_clients_voices = self.queue_clients_voices.write().unwrap();
+        let mut queue_clients_voices = self.queue_clients_voices.lock().unwrap();
         let client_voice = ClientVoice {
             id: ssrc,
             chunks: vec![],

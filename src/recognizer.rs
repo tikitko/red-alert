@@ -51,9 +51,10 @@ impl Recognizer {
                     let recognition = Recognition::new(voice, &model);
                     for recognition_state in recognition {
                         match recognition_state {
-                            RecognitionState::WaitingChunk
-                            | RecognitionState::RepeatedResult
-                            | RecognitionState::EmptyResult => {}
+                            RecognitionState::RepeatedResult | RecognitionState::EmptyResult => {}
+                            RecognitionState::WaitingChunk => {
+                                thread::sleep(Duration::from_millis(1));
+                            }
                             RecognitionState::Result(recognition_result) => {
                                 if !send_state(RecognizerState::RecognitionResult(
                                     voice_user_id,

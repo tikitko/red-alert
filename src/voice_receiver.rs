@@ -1,11 +1,12 @@
 use bimap::BiMap;
+use guard::guard;
 use serenity::async_trait;
 use serenity::model::prelude::UserId;
 use songbird::events::context_data::{SpeakingUpdateData, VoiceData};
 use songbird::model::payload::{ClientDisconnect, Speaking};
 use songbird::{Call, CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler};
-use std::collections::HashMap;
-use std::sync::{Arc, RwLock, RwLockReadGuard};
+use std::collections::{HashMap, LinkedList};
+use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
 
 pub struct ReadVoiceContainer {
     client_user_id: UserId,
@@ -28,48 +29,84 @@ pub struct ClientVoice {
 }
 
 #[derive(Clone)]
+pub struct VoiceReceiverConfiguration {
+    pub queue_size: usize,
+    pub cut_voice_chunks_size: usize,
+}
+
+impl Default for VoiceReceiverConfiguration {
+    fn default() -> Self {
+        Self {
+            queue_size: 25,
+            cut_voice_chunks_size: 1000,
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct VoiceReceiver {
+    configuration: Arc<VoiceReceiverConfiguration>,
     ids_map: Arc<RwLock<BiMap<u32, UserId>>>,
-    queue_clients_voices: Arc<RwLock<Vec<Arc<RwLock<ClientVoice>>>>>,
-    processing_clients_voices: Arc<RwLock<HashMap<u32, Arc<RwLock<ClientVoice>>>>>,
+    queue_clients_voices: Arc<Mutex<LinkedList<Arc<RwLock<ClientVoice>>>>>,
+    processing_clients_voices: Arc<Mutex<HashMap<u32, Arc<RwLock<ClientVoice>>>>>,
 }
 
 impl VoiceReceiver {
-    pub fn new(handler: &mut Call, queue_size: usize) -> VoiceReceiver {
-        let voice_receiver = VoiceReceiver {
+    pub fn with_configuration(configuration: VoiceReceiverConfiguration) -> VoiceReceiver {
+        Self {
+            configuration: Arc::new(configuration),
             ids_map: Arc::new(Default::default()),
-            queue_clients_voices: Arc::new(RwLock::new(Vec::with_capacity(queue_size))),
+            queue_clients_voices: Arc::new(Default::default()),
             processing_clients_voices: Arc::new(Default::default()),
-        };
+        }
+    }
 
-        handler.add_global_event(
-            CoreEvent::SpeakingStateUpdate.into(),
-            voice_receiver.clone(),
-        );
-        handler.add_global_event(CoreEvent::SpeakingUpdate.into(), voice_receiver.clone());
-        handler.add_global_event(CoreEvent::VoicePacket.into(), voice_receiver.clone());
-        handler.add_global_event(CoreEvent::ClientDisconnect.into(), voice_receiver.clone());
-        handler.add_global_event(CoreEvent::DriverConnect.into(), voice_receiver.clone());
-        handler.add_global_event(CoreEvent::DriverDisconnect.into(), voice_receiver.clone());
-        handler.add_global_event(CoreEvent::DriverReconnect.into(), voice_receiver.clone());
-
-        voice_receiver
+    pub fn subscribe(&self, handler: &mut Call) {
+        handler.add_global_event(CoreEvent::SpeakingStateUpdate.into(), self.clone());
+        handler.add_global_event(CoreEvent::SpeakingUpdate.into(), self.clone());
+        handler.add_global_event(CoreEvent::VoicePacket.into(), self.clone());
+        handler.add_global_event(CoreEvent::ClientDisconnect.into(), self.clone());
+        handler.add_global_event(CoreEvent::DriverConnect.into(), self.clone());
+        handler.add_global_event(CoreEvent::DriverDisconnect.into(), self.clone());
+        handler.add_global_event(CoreEvent::DriverReconnect.into(), self.clone());
     }
 
     pub fn next_voice(&self) -> Option<ReadVoiceContainer> {
         let ids_map = self.ids_map.read().unwrap();
-        let mut queue_clients_voices = self.queue_clients_voices.write().unwrap();
-        for index in 0..queue_clients_voices.len() {
-            let client_voice = &queue_clients_voices[index];
+        let mut queue_clients_voices = self.queue_clients_voices.lock().unwrap();
+        let mut voices_to_revert: Vec<Arc<RwLock<ClientVoice>>> = vec![];
+        let mut read_voice_container_to_return: Option<ReadVoiceContainer> = None;
+        while let Some(client_voice) = queue_clients_voices.pop_front() {
             let client_voice_id = client_voice.read().unwrap().id;
             if let Some(client_user_id) = ids_map.get_by_left(&client_voice_id) {
-                return Some(ReadVoiceContainer {
+                read_voice_container_to_return = Some(ReadVoiceContainer {
                     client_user_id: client_user_id.clone(),
-                    client_voice: queue_clients_voices.remove(index),
+                    client_voice,
                 });
+                break;
+            } else {
+                voices_to_revert.push(client_voice);
             }
         }
-        None
+        for voice_to_revert in voices_to_revert {
+            queue_clients_voices.push_back(voice_to_revert);
+        }
+        read_voice_container_to_return
+    }
+
+    fn create_voice_in_queue(&self, ssrc: u32) -> Arc<RwLock<ClientVoice>> {
+        let mut queue_clients_voices = self.queue_clients_voices.lock().unwrap();
+        let client_voice = ClientVoice {
+            id: ssrc,
+            chunks: vec![],
+            is_completed: false,
+        };
+        let client_voice = Arc::new(RwLock::new(client_voice));
+        if queue_clients_voices.len() >= self.configuration.queue_size {
+            queue_clients_voices.pop_front();
+        }
+        queue_clients_voices.push_back(client_voice.clone());
+        client_voice
     }
 
     fn update_for_speaking(&self, speaking: &Speaking) {
@@ -82,59 +119,49 @@ impl VoiceReceiver {
     }
 
     fn update_for_speaking_update_data(&self, data: &SpeakingUpdateData) {
-        let mut processing_clients_voices = self.processing_clients_voices.write().unwrap();
+        let mut processing_clients_voices = self.processing_clients_voices.lock().unwrap();
         if let Some(processing_client_voice) = processing_clients_voices.remove(&data.ssrc) {
             if !data.speaking {
-                let mut processing_client_voice = processing_client_voice.write().unwrap();
-                processing_client_voice.is_completed = true
+                processing_client_voice.write().unwrap().is_completed = true;
             } else {
                 processing_clients_voices.insert(data.ssrc, processing_client_voice);
             }
-        } else {
-            if data.speaking {
-                let mut queue_clients_voices = self.queue_clients_voices.write().unwrap();
-                let client_voice = ClientVoice {
-                    id: data.ssrc,
-                    chunks: vec![],
-                    is_completed: false,
-                };
-                let client_voice = Arc::new(RwLock::new(client_voice));
-                processing_clients_voices.insert(data.ssrc, client_voice.clone());
-                if queue_clients_voices.len() >= queue_clients_voices.capacity() {
-                    queue_clients_voices.remove(0);
-                }
-                queue_clients_voices.push(client_voice);
-            }
+        } else if data.speaking {
+            let client_voice = self.create_voice_in_queue(data.ssrc);
+            processing_clients_voices.insert(data.ssrc, client_voice);
         }
     }
 
     fn update_for_voice_data(&self, data: &VoiceData) {
-        if let Some(audio) = data.audio {
-            let processing_clients_voices = self.processing_clients_voices.read().unwrap();
-            if let Some(processing_client_voice) = processing_clients_voices.get(&data.packet.ssrc)
-            {
-                let mut processing_client_voice = processing_client_voice.write().unwrap();
-                processing_client_voice.chunks.push(audio.clone());
-            }
+        guard!(let Some(audio) = data.audio
+            else { return });
+        let mut processing_clients_voices = self.processing_clients_voices.lock().unwrap();
+        guard!(let Some(processing_client_voice) = processing_clients_voices.get(&data.packet.ssrc)
+            else { return });
+        let mut processing_client_voice = processing_client_voice.write().unwrap();
+        processing_client_voice.chunks.push(audio.clone());
+        if processing_client_voice.chunks.len() >= self.configuration.cut_voice_chunks_size {
+            processing_client_voice.is_completed = true;
+            drop(processing_client_voice);
+            let client_voice = self.create_voice_in_queue(data.packet.ssrc);
+            processing_clients_voices.insert(data.packet.ssrc, client_voice);
         }
     }
 
     fn update_for_disconnect(&self, disconnect: &ClientDisconnect) {
-        let mut processing_clients_voices = self.processing_clients_voices.write().unwrap();
+        let mut processing_clients_voices = self.processing_clients_voices.lock().unwrap();
         let mut ids_map = self.ids_map.write().unwrap();
-        if let Some((ssrc, _)) = ids_map.remove_by_right(&UserId(disconnect.user_id.0)) {
-            if let Some(processing_client_voice) = processing_clients_voices.remove(&ssrc) {
-                let mut processing_client_voice = processing_client_voice.write().unwrap();
-                processing_client_voice.is_completed = true
-            }
-        }
+        guard!(let Some((ssrc, _)) = ids_map.remove_by_right(&UserId(disconnect.user_id.0))
+            else { return });
+        guard!(let Some(processing_client_voice) = processing_clients_voices.remove(&ssrc)
+            else { return });
+        processing_client_voice.write().unwrap().is_completed = true;
     }
 
     fn reset_in_processing(&self) {
-        let mut processing_clients_voices = self.processing_clients_voices.write().unwrap();
+        let mut processing_clients_voices = self.processing_clients_voices.lock().unwrap();
         for (_, processing_client_voice) in processing_clients_voices.iter() {
-            let mut processing_client_voice = processing_client_voice.write().unwrap();
-            processing_client_voice.is_completed = true
+            processing_client_voice.write().unwrap().is_completed = true;
         }
         processing_clients_voices.clear();
     }
@@ -142,7 +169,6 @@ impl VoiceReceiver {
 
 #[async_trait]
 impl VoiceEventHandler for VoiceReceiver {
-    #[allow(unused_variables)]
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
         use EventContext as Ctx;
         match ctx {

@@ -167,7 +167,8 @@ async fn listen_for_red_alert(
     if conn_result.is_ok() {
         let mut handler = handler_lock.lock().await;
 
-        let voice_receiver = VoiceReceiver::new(handler.deref_mut(), 25);
+        let voice_receiver = VoiceReceiver::with_configuration(Default::default());
+        voice_receiver.subscribe(handler.deref_mut());
 
         let (tx, rx) = mpsc::sync_channel::<()>(1);
 

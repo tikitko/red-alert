@@ -1,4 +1,4 @@
-use crate::ReadVoiceContainer;
+use crate::voices_storage::ReadVoiceContainer;
 use fon::chan::Ch16;
 use fon::Audio;
 use voskrust::api::{Model as VoskModel, Recognizer as VoskRecognizer};
@@ -25,17 +25,17 @@ pub enum RecognitionState {
 
 pub struct Recognition {
     recognizer: VoskRecognizer,
-    voice: ReadVoiceContainer,
+    voice_container: ReadVoiceContainer,
     last_partial: String,
     last_processed_chunk: usize,
 }
 
 impl Recognition {
     pub const BASE_HZ: u32 = 16_000;
-    pub fn new(voice: ReadVoiceContainer, model: &VoskModel) -> Self {
+    pub fn new(voice_container: ReadVoiceContainer, model: &VoskModel) -> Self {
         Self {
             recognizer: VoskRecognizer::new(model, Self::BASE_HZ as f32),
-            voice,
+            voice_container,
             last_partial: "".to_string(),
             last_processed_chunk: 0,
         }
@@ -45,7 +45,7 @@ impl Recognition {
 impl Iterator for Recognition {
     type Item = RecognitionState;
     fn next(&mut self) -> Option<Self::Item> {
-        let voice = self.voice.read_lock();
+        let voice = self.voice_container.voice();
         if voice.chunks.len() < (self.last_processed_chunk + 1) {
             if voice.is_completed {
                 None

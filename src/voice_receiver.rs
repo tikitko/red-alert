@@ -1,3 +1,4 @@
+use crate::voices_storage::{ClientVoice, ReadVoiceContainer, StorageVoice, VoicesStorage};
 use bimap::BiMap;
 use guard::guard;
 use serenity::async_trait;
@@ -6,27 +7,7 @@ use songbird::events::context_data::{SpeakingUpdateData, VoiceData};
 use songbird::model::payload::{ClientDisconnect, Speaking};
 use songbird::{Call, CoreEvent, Event, EventContext, EventHandler as VoiceEventHandler};
 use std::collections::{HashMap, LinkedList};
-use std::sync::{Arc, Mutex, RwLock, RwLockReadGuard};
-
-pub struct ReadVoiceContainer {
-    client_user_id: UserId,
-    client_voice: Arc<RwLock<ClientVoice>>,
-}
-
-impl ReadVoiceContainer {
-    pub fn user_id(&self) -> UserId {
-        self.client_user_id
-    }
-    pub fn read_lock(&self) -> RwLockReadGuard<ClientVoice> {
-        self.client_voice.read().unwrap()
-    }
-}
-
-pub struct ClientVoice {
-    pub id: u32,
-    pub chunks: Vec<Vec<i16>>,
-    pub is_completed: bool,
-}
+use std::sync::{Arc, Mutex, RwLock};
 
 #[derive(Clone)]
 pub struct VoiceReceiverConfiguration {
@@ -69,29 +50,6 @@ impl VoiceReceiver {
         handler.add_global_event(CoreEvent::DriverConnect.into(), self.clone());
         handler.add_global_event(CoreEvent::DriverDisconnect.into(), self.clone());
         handler.add_global_event(CoreEvent::DriverReconnect.into(), self.clone());
-    }
-
-    pub fn next_voice(&self) -> Option<ReadVoiceContainer> {
-        let ids_map = self.ids_map.read().unwrap();
-        let mut queue_clients_voices = self.queue_clients_voices.lock().unwrap();
-        let mut voices_to_revert: Vec<Arc<RwLock<ClientVoice>>> = vec![];
-        let mut read_voice_container_to_return: Option<ReadVoiceContainer> = None;
-        while let Some(client_voice) = queue_clients_voices.pop_front() {
-            let client_voice_id = client_voice.read().unwrap().id;
-            if let Some(client_user_id) = ids_map.get_by_left(&client_voice_id) {
-                read_voice_container_to_return = Some(ReadVoiceContainer {
-                    client_user_id: client_user_id.clone(),
-                    client_voice,
-                });
-                break;
-            } else {
-                voices_to_revert.push(client_voice);
-            }
-        }
-        for voice_to_revert in voices_to_revert {
-            queue_clients_voices.push_back(voice_to_revert);
-        }
-        read_voice_container_to_return
     }
 
     fn create_voice_in_queue(&self, ssrc: u32) -> Arc<RwLock<ClientVoice>> {
@@ -164,6 +122,34 @@ impl VoiceReceiver {
             processing_client_voice.write().unwrap().is_completed = true;
         }
         processing_clients_voices.clear();
+    }
+}
+
+impl VoicesStorage for VoiceReceiver {
+    type Information = ();
+    fn next_voice(&self) -> Option<StorageVoice<Self::Information>> {
+        let ids_map = self.ids_map.read().unwrap();
+        let mut queue_clients_voices = self.queue_clients_voices.lock().unwrap();
+        let mut voices_to_revert: Vec<Arc<RwLock<ClientVoice>>> = vec![];
+        let mut read_voice_container_to_return: Option<StorageVoice<Self::Information>> = None;
+        while let Some(client_voice) = queue_clients_voices.pop_front() {
+            let client_voice_id = client_voice.read().unwrap().id;
+            if let Some(client_user_id) = ids_map.get_by_left(&client_voice_id) {
+                let read_voice_container =
+                    ReadVoiceContainer::new(client_user_id.clone(), client_voice);
+                read_voice_container_to_return = Some(StorageVoice {
+                    information: (),
+                    container: read_voice_container,
+                });
+                break;
+            } else {
+                voices_to_revert.push(client_voice);
+            }
+        }
+        for voice_to_revert in voices_to_revert {
+            queue_clients_voices.push_back(voice_to_revert);
+        }
+        read_voice_container_to_return
     }
 }
 

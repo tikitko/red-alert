@@ -1,8 +1,11 @@
+mod guilds_voices_storage;
 mod recognition;
 mod recognizer;
 mod red_alert_handler;
 mod voice_receiver;
+mod voices_storage;
 
+use guilds_voices_storage::*;
 use recognizer::*;
 use red_alert_handler::*;
 use voice_receiver::*;
@@ -19,8 +22,7 @@ use std::collections::{HashMap, HashSet};
 use std::ops::DerefMut;
 use std::os::raw::c_int;
 use std::path::Path;
-use std::sync::mpsc::{SyncSender, TryRecvError};
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, RwLock};
 use std::time::Duration;
 use voskrust::api::{set_log_level as set_vosk_log_level, Model as VoskModel};
 
@@ -45,12 +47,6 @@ fn is_sub<T: PartialEq>(first: &Vec<T>, second: &Vec<T>) -> bool {
     false
 }
 
-struct VoidSender(SyncSender<()>);
-
-impl TypeMapKey for VoidSender {
-    type Value = Self;
-}
-
 #[derive(Clone)]
 struct VoiceConfig {
     target_words: Vec<String>,
@@ -61,27 +57,161 @@ struct VoiceConfig {
 impl VoiceConfig {
     fn should_kick(&self, author_user_id: UserId, text: &String) -> Option<UserId> {
         for self_word in &self.self_words {
-            if text.contains(self_word) {
-                return Some(author_user_id);
+            if !text.contains(self_word) {
+                continue;
             }
+            return Some(author_user_id);
         }
         for target_word in &self.target_words {
-            if text.contains(target_word) {
-                for (name, user_id) in &self.aliases {
-                    if text.contains(name) {
-                        return Some(UserId(*user_id));
-                    }
+            if !text.contains(target_word) {
+                continue;
+            }
+            for (name, user_id) in &self.aliases {
+                if !text.contains(name) {
+                    continue;
                 }
+                return Some(UserId(*user_id));
             }
         }
         None
     }
 }
 
+struct RecognizerData {
+    #[allow(dead_code)]
+    cancel_sender: mpsc::SyncSender<()>,
+    voice_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
+}
+
+impl TypeMapKey for RecognizerData {
+    type Value = Self;
+}
+
 struct Handler {
     recognition_model: VoskModel,
     voice_config: VoiceConfig,
     red_alert_handler: Arc<RedAlertHandler>,
+}
+
+impl Handler {
+    async fn start_recognizer(&self, ctx: &Context) {
+        let (tx, rx) = mpsc::sync_channel::<()>(1);
+        let voice_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>> =
+            Arc::new(Default::default());
+        let mut data = ctx.data.write().await;
+        data.insert::<RecognizerData>(RecognizerData {
+            cancel_sender: tx,
+            voice_receivers: voice_receivers.clone(),
+        });
+
+        let red_alert_handler = self.red_alert_handler.clone();
+        let recognition_model = self.recognition_model.clone();
+        let voice_config = self.voice_config.clone();
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            let recognizer_signal = Recognizer {
+                workers_count: 10,
+                model: recognition_model,
+                voices_storage: GuildsVoicesStorage(voice_receivers.into()),
+            }
+            .start();
+            let mut session_kicked: HashSet<UserId> = HashSet::new();
+            'root: loop {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+
+                match rx.try_recv() {
+                    Ok(()) | Err(mpsc::TryRecvError::Disconnected) => {
+                        break 'root;
+                    }
+                    Err(mpsc::TryRecvError::Empty) => {}
+                }
+
+                let recognizer_event = match recognizer_signal.try_recv() {
+                    Ok(recognizer_event) => recognizer_event,
+                    Err(error) => match error {
+                        mpsc::TryRecvError::Empty => {
+                            continue 'root;
+                        }
+                        mpsc::TryRecvError::Disconnected => {
+                            break 'root;
+                        }
+                    },
+                };
+
+                let log_prefix = {
+                    match recognizer_event.state {
+                        RecognizerState::Idle => {
+                            format!("")
+                        }
+                        RecognizerState::RecognitionStart(i) |
+                        RecognizerState::RecognitionResult(i, _) |
+                        RecognizerState::RecognitionEnd(i) => {
+                            format!(
+                                "[W:{}][UID:{}]",
+                                recognizer_event.worker_number, i.user_id.0
+                            )
+                        }
+                    }
+                };
+                match recognizer_event.state {
+                    RecognizerState::RecognitionResult(information, result) => {
+                        info!(
+                            "{} Recognition RESULT is {:?}.",
+                            log_prefix, result
+                        );
+                        guard!(let Some(kick_user_id) =
+                            voice_config.should_kick(information.user_id, &result.text) else {
+                            info!(
+                                "{} Recognition RESULT skipped, because don't have restrictions.",
+                                log_prefix
+                            );
+                            continue 'root;
+                        });
+                        if session_kicked.contains(&kick_user_id) {
+                            info!(
+                                "{} Recognition RESULT skipped, because user already kicked.",
+                                log_prefix
+                            );
+                            continue 'root;
+                        }
+                        info!(
+                            "{} Recognition RESULT will be used for kick, because have restrictions.",
+                            log_prefix
+                        );
+                        session_kicked.insert(kick_user_id);
+                        let red_alert_handler = red_alert_handler.clone();
+                        let ctx = ctx.clone();
+                        tokio::spawn(async move {
+                            let red_alert_deportations_results = red_alert_handler
+                                .handle(&ctx, information.storage.guild_id, vec![kick_user_id])
+                                .await;
+                            let red_alert_deportation_result =
+                                red_alert_deportations_results.get(&kick_user_id).unwrap();
+                            info!(
+                                "{} Recognition RESULT used for kick, status is {:?}.",
+                                log_prefix, red_alert_deportation_result
+                            );
+                        });
+                    }
+                    RecognizerState::RecognitionStart(information) => {
+                        info!(
+                            "{} Recognition STARTED.",
+                            log_prefix
+                        );
+                        session_kicked.remove(&information.user_id);
+                    }
+                    RecognizerState::RecognitionEnd(information) => {
+                        info!(
+                            "{} Recognition ENDED.",
+                            log_prefix
+                        );
+                        session_kicked.remove(&information.user_id);
+                    }
+                    RecognizerState::Idle => {}
+                }
+            }
+        });
+    }
 }
 
 #[async_trait]
@@ -109,15 +239,7 @@ impl EventHandler for Handler {
                 possible_channel_id.map(ChannelId)
             };
             if let Some(possible_channel_id) = possible_channel_id {
-                listen_for_red_alert(
-                    self.red_alert_handler.clone(),
-                    &self.recognition_model,
-                    &self.voice_config,
-                    &ctx,
-                    guild_id,
-                    possible_channel_id,
-                )
-                .await
+                listen_for_red_alert(&ctx, guild_id, possible_channel_id).await
             } else {
                 format!("ЧТО ОТСЛЕЖИВАТЬ НАРКОМАН?")
             }
@@ -142,136 +264,38 @@ impl EventHandler for Handler {
             let _ = msg.channel_id.say(&ctx, answer_msg).await;
         }
     }
-    async fn ready(&self, _: Context, ready: Ready) {
+    async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
+        self.start_recognizer(&ctx).await;
     }
 }
 
-async fn listen_for_red_alert(
-    red_alert_handler: Arc<RedAlertHandler>,
-    recognition_model: &VoskModel,
-    voice_config: &VoiceConfig,
-    ctx: &Context,
-    guild_id: GuildId,
-    channel_id: ChannelId,
-) -> String {
+async fn listen_for_red_alert(ctx: &Context, guild_id: GuildId, channel_id: ChannelId) -> String {
     let channel_name = channel_id.mention();
+    let data = ctx.data.read().await;
+    if let Some(recognizer_data) = data.get::<RecognizerData>() {
+        let manager = songbird::get(ctx)
+            .await
+            .expect("Songbird Voice client placed in at initialisation.")
+            .clone();
 
-    let manager = songbird::get(ctx)
-        .await
-        .expect("Songbird Voice client placed in at initialisation.")
-        .clone();
+        let (handler_lock, conn_result) = manager.join(guild_id, channel_id).await;
 
-    let (handler_lock, conn_result) = manager.join(guild_id, channel_id).await;
+        if conn_result.is_ok() {
+            let mut handler = handler_lock.lock().await;
 
-    if conn_result.is_ok() {
-        let mut handler = handler_lock.lock().await;
+            let voice_receiver = VoiceReceiver::with_configuration(Default::default());
+            voice_receiver.subscribe(handler.deref_mut());
 
-        let voice_receiver = VoiceReceiver::with_configuration(Default::default());
-        voice_receiver.subscribe(handler.deref_mut());
+            let mut voice_receivers = recognizer_data.voice_receivers.write().unwrap();
+            voice_receivers.insert(guild_id, voice_receiver);
 
-        let (tx, rx) = mpsc::sync_channel::<()>(1);
-
-        let mut data = ctx.data.write().await;
-        data.insert::<VoidSender>(VoidSender(tx));
-
-        let red_alert_handler = red_alert_handler.clone();
-        let recognition_model = recognition_model.clone();
-        let voice_config = voice_config.clone();
-        let ctx = ctx.clone();
-        tokio::spawn(async move {
-            let recognizer_signal = Recognizer {
-                workers_count: 5,
-                model: recognition_model,
-                voice_receiver,
-            }
-            .start();
-            let mut session_kicked: HashSet<UserId> = HashSet::new();
-            'root: loop {
-                tokio::time::sleep(Duration::from_millis(10)).await;
-                match rx.try_recv() {
-                    Ok(()) | Err(TryRecvError::Disconnected) => {
-                        break 'root;
-                    }
-                    Err(TryRecvError::Empty) => {}
-                }
-
-                let recognizer_event = match recognizer_signal.try_recv() {
-                    Ok(recognizer_event) => recognizer_event,
-                    Err(error) => match error {
-                        TryRecvError::Empty => {
-                            continue 'root;
-                        }
-                        TryRecvError::Disconnected => {
-                            break 'root;
-                        }
-                    },
-                };
-
-                match recognizer_event.state {
-                    RecognizerState::RecognitionResult(user_id, result) => {
-                        info!(
-                            "[W:{}][UID:{}] Recognition RESULT is {:?}.",
-                            recognizer_event.worker_number, user_id.0, result
-                        );
-                        if session_kicked.contains(&user_id) {
-                            info!(
-                                "[W:{}][UID:{}] Recognition RESULT skipped, because user already kicked.",
-                                recognizer_event.worker_number, user_id.0
-                            );
-                            continue 'root;
-                        }
-                        guard!(let Some(kick_user_id) =
-                            voice_config.should_kick(user_id, &result.text) else {
-                            info!(
-                                "[W:{}][UID:{}] Recognition RESULT skipped, because don't have restrictions.",
-                                recognizer_event.worker_number, user_id.0
-                            );
-                            continue 'root;
-                        });
-                        info!(
-                            "[W:{}][UID:{}] Recognition RESULT will be used for kick, because have restrictions.",
-                            recognizer_event.worker_number, user_id.0
-                        );
-                        session_kicked.insert(kick_user_id);
-                        let red_alert_handler = red_alert_handler.clone();
-                        let ctx = ctx.clone();
-                        tokio::spawn(async move {
-                            let red_alert_deportations_results = red_alert_handler
-                                .handle(&ctx, guild_id, vec![kick_user_id])
-                                .await;
-                            let red_alert_deportation_result =
-                                red_alert_deportations_results.get(&kick_user_id).unwrap();
-                            info!(
-                                "[W:{}][UID:{}] Recognition RESULT used for kick, status is {:?}.",
-                                recognizer_event.worker_number,
-                                user_id.0,
-                                red_alert_deportation_result
-                            );
-                        });
-                    }
-                    RecognizerState::RecognitionStart(user_id) => {
-                        info!(
-                            "[W:{}][UID:{}] Recognition STARTED.",
-                            recognizer_event.worker_number, user_id.0
-                        );
-                        session_kicked.remove(&user_id);
-                    }
-                    RecognizerState::RecognitionEnd(user_id) => {
-                        info!(
-                            "[W:{}][UID:{}] Recognition ENDED.",
-                            recognizer_event.worker_number, user_id.0
-                        );
-                        session_kicked.remove(&user_id);
-                    }
-                    RecognizerState::Idle => {}
-                }
-            }
-        });
-
-        format!("ОТСЛЕЖИВАЮ КОД КРАСНЫЙ В КАНАЛЕ {channel_name}...")
+            format!("ОТСЛЕЖИВАЮ КОД КРАСНЫЙ В КАНАЛЕ {channel_name}...")
+        } else {
+            format!("ОШИБКА СЛЕЖКИ ЗА КАНАЛОМ {channel_name}. НЕ ПОЛУЧАЕТСЯ ВОЙТИ В КАНАЛ...")
+        }
     } else {
-        format!("ОШИБКА СЛЕЖКИ ЗА КАНАЛОМ {channel_name}.")
+        format!("ОШИБКА СЛЕЖКИ ЗА КАНАЛОМ {channel_name}. РАСПОЗНАВАТЕЛИ РЕЧИ МЕРТВЫ...")
     }
 }
 
@@ -284,12 +308,16 @@ async fn exit_for_red_alert(ctx: &Context, guild_id: GuildId) -> String {
     let has_handler = manager.get(guild_id).is_some();
 
     if has_handler {
+        let data = ctx.data.read().await;
         if manager.remove(guild_id).await.is_err() {
-            format!("ПРОИЗОШЛА ОШИБКА!")
-        } else {
-            let mut data = ctx.data.write().await;
-            data.remove::<VoidSender>();
+            format!("ПРОИЗОШЛА ОШИБКА! НЕ ПОЛУЧАЕТСЯ ОТКЛЮЧИТЬСЯ...")
+        } else if let Some(recognizer_data) = data.get::<RecognizerData>() {
+            let mut voice_receivers = recognizer_data.voice_receivers.write().unwrap();
+            voice_receivers.remove(&guild_id);
+
             format!("ПРЕКРАЩАЮ ОТСЛЕЖИВАНИЕ КАНАЛА!")
+        } else {
+            format!("ПРОИЗОШЛА ОШИБКА! РАСПОЗНАВАТЕЛИ РЕЧИ МЕРТВЫ...")
         }
     } else {
         format!("НЕ ОТСЛЕЖИВАЮ КАНАЛЫ!")

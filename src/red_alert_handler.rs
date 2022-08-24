@@ -17,7 +17,7 @@ impl RedAlertHandler {
         guild_id: GuildId,
         target_users_ids: Vec<UserId>,
     ) -> std::collections::HashMap<UserId, RedAlertDeportationResult> {
-        let guild = ctx.cache.guild(guild_id).await;
+        let guild = ctx.cache.guild(guild_id);
         let mut result = std::collections::HashMap::new();
         for user_id in target_users_ids {
             if {

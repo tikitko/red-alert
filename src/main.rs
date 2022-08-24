@@ -414,7 +414,9 @@ async fn main() {
         set_vosk_log_level(vosk_log_level as c_int);
     }
 
-    let mut client = Client::builder(&token, GatewayIntents::privileged())
+    let intents = GatewayIntents::non_privileged()
+        | GatewayIntents::MESSAGE_CONTENT;
+    let mut client = Client::builder(&token, intents)
         .event_handler(Handler {
             recognition_model: VoskModel::new(vosk_model_path.as_str())
                 .expect("Incorrect recognition model!"),

@@ -1,20 +1,24 @@
 mod guilds_voices_storage;
+mod is_sub;
 mod recognition;
 mod recognizer;
 mod red_alert_handler;
+mod voice_config;
 mod voice_receiver;
 mod voices_storage;
 
 use guilds_voices_storage::*;
+use is_sub::*;
 use recognizer::*;
 use red_alert_handler::*;
+use voice_config::*;
 use voice_receiver::*;
 
 use config::{Config as ConfigFile, File};
 use guard::guard;
 use serenity::model::id::GuildId;
 use serenity::model::prelude::{ChannelId, Message, Ready, UserId};
-use serenity::prelude::{Context, EventHandler, Mentionable, TypeMapKey};
+use serenity::prelude::{Context, EventHandler, GatewayIntents, Mentionable, TypeMapKey};
 use serenity::{async_trait, Client};
 use songbird::driver::DecodeMode;
 use songbird::{Config, SerenityInit};
@@ -28,54 +32,6 @@ use voskrust::api::{set_log_level as set_vosk_log_level, Model as VoskModel};
 
 #[macro_use]
 extern crate log;
-
-fn is_sub<T: PartialEq>(first: &Vec<T>, second: &Vec<T>) -> bool {
-    if second.is_empty() {
-        return false;
-    }
-    let mut index: usize = 0;
-    for element in first {
-        if &second[index] == element {
-            index += 1;
-        } else {
-            index = 0;
-        }
-        if second.len() == index {
-            return true;
-        }
-    }
-    false
-}
-
-#[derive(Clone)]
-struct VoiceConfig {
-    target_words: Vec<String>,
-    self_words: Vec<String>,
-    aliases: HashMap<String, u64>,
-}
-
-impl VoiceConfig {
-    fn should_kick(&self, author_user_id: UserId, text: &String) -> Option<UserId> {
-        for self_word in &self.self_words {
-            if !text.contains(self_word) {
-                continue;
-            }
-            return Some(author_user_id);
-        }
-        for target_word in &self.target_words {
-            if !text.contains(target_word) {
-                continue;
-            }
-            for (name, user_id) in &self.aliases {
-                if !text.contains(name) {
-                    continue;
-                }
-                return Some(UserId(*user_id));
-            }
-        }
-        None
-    }
-}
 
 struct RecognizerData {
     #[allow(dead_code)]
@@ -217,7 +173,7 @@ impl EventHandler for Handler {
         let message = msg.content.to_lowercase();
         let message_words: Vec<&str> = message.split(char::is_whitespace).collect();
 
-        let answer_msg = if is_sub(&message_words, &vec!["отслеживать", "код", "красный"])
+        let answer_msg = if message_words.is_sub(&vec!["отслеживать", "код", "красный"])
         {
             let possible_channel_id: Option<ChannelId> = {
                 let mut possible_channel_id: Option<u64> = None;
@@ -234,10 +190,9 @@ impl EventHandler for Handler {
             } else {
                 format!("ЧТО ОТСЛЕЖИВАТЬ НАРКОМАН?")
             }
-        } else if is_sub(&message_words, &vec!["прекратить", "код", "красный"])
-        {
+        } else if message_words.is_sub(&vec!["прекратить", "код", "красный"]) {
             exit_for_red_alert(&ctx, guild_id).await
-        } else if is_sub(&message_words, &vec!["код", "красный"]) {
+        } else if message_words.is_sub(&vec!["код", "красный"]) {
             let author_id = msg.author.id;
             let target_users_ids: Vec<UserId> = msg.mentions.iter().map(|u| u.id).collect();
             process_red_alert(
@@ -459,7 +414,7 @@ async fn main() {
         set_vosk_log_level(vosk_log_level as c_int);
     }
 
-    let mut client = Client::builder(&token)
+    let mut client = Client::builder(&token, GatewayIntents::privileged())
         .event_handler(Handler {
             recognition_model: VoskModel::new(vosk_model_path.as_str())
                 .expect("Incorrect recognition model!"),

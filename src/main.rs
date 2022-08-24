@@ -143,9 +143,9 @@ impl Handler {
                         RecognizerState::Idle => {
                             format!("")
                         }
-                        RecognizerState::RecognitionStart(i) |
-                        RecognizerState::RecognitionResult(i, _) |
-                        RecognizerState::RecognitionEnd(i) => {
+                        RecognizerState::RecognitionStart(i)
+                        | RecognizerState::RecognitionResult(i, _)
+                        | RecognizerState::RecognitionEnd(i) => {
                             format!(
                                 "[W:{}][UID:{}]",
                                 recognizer_event.worker_number, i.user_id.0
@@ -155,10 +155,7 @@ impl Handler {
                 };
                 match recognizer_event.state {
                     RecognizerState::RecognitionResult(information, result) => {
-                        info!(
-                            "{} Recognition RESULT is {:?}.",
-                            log_prefix, result
-                        );
+                        info!("{} Recognition RESULT is {:?}.", log_prefix, result);
                         guard!(let Some(kick_user_id) =
                             voice_config.should_kick(information.user_id, &result.text) else {
                             info!(
@@ -194,17 +191,11 @@ impl Handler {
                         });
                     }
                     RecognizerState::RecognitionStart(information) => {
-                        info!(
-                            "{} Recognition STARTED.",
-                            log_prefix
-                        );
+                        info!("{} Recognition STARTED.", log_prefix);
                         session_kicked.remove(&information.user_id);
                     }
                     RecognizerState::RecognitionEnd(information) => {
-                        info!(
-                            "{} Recognition ENDED.",
-                            log_prefix
-                        );
+                        info!("{} Recognition ENDED.", log_prefix);
                         session_kicked.remove(&information.user_id);
                     }
                     RecognizerState::Idle => {}

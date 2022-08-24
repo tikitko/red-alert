@@ -410,12 +410,19 @@ async fn main() {
         .try_deserialize()
         .expect("Incorrect format of aliases in the config!");
 
+    let similarity_threshold = voice_settings
+        .get("similarity_threshold")
+        .expect("Expected a similarity threshold in the config!")
+        .clone();
+    let similarity_threshold: f32 = similarity_threshold
+        .try_deserialize()
+        .expect("Incorrect format of similarity threshold in the config!");
+
     if let Ok(vosk_log_level) = vosk_log_level {
         set_vosk_log_level(vosk_log_level as c_int);
     }
 
-    let intents = GatewayIntents::non_privileged()
-        | GatewayIntents::MESSAGE_CONTENT;
+    let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
     let mut client = Client::builder(&token, intents)
         .event_handler(Handler {
             recognition_model: VoskModel::new(vosk_model_path.as_str())
@@ -424,6 +431,7 @@ async fn main() {
                 target_words,
                 self_words,
                 aliases,
+                similarity_threshold,
             },
             red_alert_handler: Arc::new(RedAlertHandler),
         })

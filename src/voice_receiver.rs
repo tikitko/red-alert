@@ -136,7 +136,7 @@ impl VoicesStorage for VoiceReceiver {
             let client_voice_id = client_voice.read().unwrap().id;
             if let Some(client_user_id) = ids_map.get_by_left(&client_voice_id) {
                 let read_voice_container =
-                    ReadVoiceContainer::new(client_user_id.clone(), client_voice);
+                    ReadVoiceContainer::new(*client_user_id, client_voice);
                 read_voice_container_to_return = Some(StorageVoice {
                     information: (),
                     container: read_voice_container,

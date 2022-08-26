@@ -78,12 +78,12 @@ impl Handler {
             }
             .start();
             let mut session_kicked: HashSet<UserId> = HashSet::new();
-            loop {
+            'root: loop {
                 guard!(let Some(recognizer_event) = tokio::select! {
                     recognizer_event = recognizer_signal.recv() => recognizer_event,
                     _ = &mut rx => None,
                 }
-                    else { break });
+                    else { break 'root });
 
                 let log_prefix = {
                     match recognizer_event.state {
@@ -109,25 +109,33 @@ impl Handler {
                                 "{} Recognition RESULT skipped, because don't have restrictions.",
                                 log_prefix
                             );
-                            continue;
+                            continue 'root;
                         });
                         if session_kicked.contains(&kick_user_id) {
                             info!(
                                 "{} Recognition RESULT skipped, because user already kicked.",
                                 log_prefix
                             );
-                            continue;
+                            continue 'root;
                         }
-                        session_kicked.insert(kick_user_id);
-                        let red_alert_deportations_results = red_alert_handler
-                            .handle(&ctx, information.inner.guild_id, vec![kick_user_id])
-                            .await;
-                        let red_alert_deportation_result =
-                            red_alert_deportations_results.get(&kick_user_id).unwrap();
                         info!(
-                            "{} Recognition RESULT used for kick, status is {:?}.",
-                            log_prefix, red_alert_deportation_result
+                            "{} Recognition RESULT will be used for kick, because have restrictions.",
+                            log_prefix
                         );
+                        session_kicked.insert(kick_user_id);
+                        let red_alert_handler = red_alert_handler.clone();
+                        let ctx = ctx.clone();
+                        tokio::spawn(async move {
+                            let red_alert_deportations_results = red_alert_handler
+                                .handle(&ctx, information.inner.guild_id, vec![kick_user_id])
+                                .await;
+                            let red_alert_deportation_result =
+                                red_alert_deportations_results.get(&kick_user_id).unwrap();
+                            info!(
+                                "{} Recognition RESULT used for kick, status is {:?}.",
+                                log_prefix, red_alert_deportation_result
+                            );
+                        });
                     }
                     RecognizerState::RecognitionStart(information) => {
                         info!("{} Recognition STARTED.", log_prefix);

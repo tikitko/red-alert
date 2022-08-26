@@ -66,9 +66,10 @@ impl<
                 .send(RecognizerState::RecognitionStart(recognition_information))
                 .await?;
             let inner_sender = sender.clone();
-            let model = model.clone();
+            let inner_model = model.clone();
             let inner_error = spawn_blocking(move || {
-                let recognition = Recognition::new(extended_voice_container.container, &model);
+                let recognition =
+                    Recognition::new(extended_voice_container.container, &inner_model);
                 for recognition_state in recognition {
                     match recognition_state {
                         RecognitionState::RepeatedResult | RecognitionState::EmptyResult => {}
@@ -98,9 +99,9 @@ impl<
         }
     }
     pub fn start(self) -> Receiver<RecognizerEvent<I>> {
-        let (tx, rx) = channel(100);
+        let (tx, rx) = channel(self.workers_count);
         for worker_index in 0..self.workers_count {
-            let (ntx, mut nrx) = channel(tx.capacity());
+            let (ntx, mut nrx) = channel(1);
             let voices_queue = self.voices_queue.clone();
             let model = self.model.clone();
             spawn(async move {

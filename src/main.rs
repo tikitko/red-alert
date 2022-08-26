@@ -78,12 +78,12 @@ impl Handler {
             }
             .start();
             let mut session_kicked: HashSet<UserId> = HashSet::new();
-            'root: loop {
+            loop {
                 guard!(let Some(recognizer_event) = tokio::select! {
                     recognizer_event = recognizer_signal.recv() => recognizer_event,
                     _ = &mut rx => None,
                 }
-                    else { break 'root });
+                    else { break });
 
                 let log_prefix = {
                     match recognizer_event.state {
@@ -109,14 +109,14 @@ impl Handler {
                                 "{} Recognition RESULT skipped, because don't have restrictions.",
                                 log_prefix
                             );
-                            continue 'root;
+                            continue;
                         });
                         if session_kicked.contains(&kick_user_id) {
                             info!(
                                 "{} Recognition RESULT skipped, because user already kicked.",
                                 log_prefix
                             );
-                            continue 'root;
+                            continue;
                         }
                         info!(
                             "{} Recognition RESULT will be used for kick, because have restrictions.",

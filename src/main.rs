@@ -1,33 +1,39 @@
-mod guilds_voices_storage;
+mod extended_voice_container;
+mod guilds_voices_receivers;
 mod is_sub;
+mod queued_items_container;
 mod recognition;
 mod recognizer;
 mod red_alert_handler;
+mod voice;
 mod voice_config;
 mod voice_receiver;
-mod voices_storage;
 
-use guilds_voices_storage::*;
+use extended_voice_container::*;
+use guilds_voices_receivers::*;
 use is_sub::*;
+use queued_items_container::*;
+use recognition::*;
 use recognizer::*;
 use red_alert_handler::*;
+use voice::*;
 use voice_config::*;
 use voice_receiver::*;
 
+use async_trait::async_trait;
 use config::{Config as ConfigFile, File};
 use guard::guard;
 use serenity::model::id::GuildId;
 use serenity::model::prelude::{ChannelId, Message, Ready, UserId};
 use serenity::prelude::{Context, EventHandler, GatewayIntents, Mentionable, TypeMapKey};
-use serenity::{async_trait, Client};
+use serenity::Client;
 use songbird::driver::DecodeMode;
 use songbird::{Config, SerenityInit};
 use std::collections::{HashMap, HashSet};
 use std::ops::DerefMut;
 use std::os::raw::c_int;
 use std::path::Path;
-use std::sync::{mpsc, Arc, RwLock};
-use std::time::Duration;
+use std::sync::Arc;
 use voskrust::api::{set_log_level as set_vosk_log_level, Model as VoskModel};
 
 #[macro_use]
@@ -35,8 +41,8 @@ extern crate log;
 
 struct RecognizerData {
     #[allow(dead_code)]
-    cancel_sender: mpsc::SyncSender<()>,
-    voice_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
+    cancel_sender: tokio::sync::oneshot::Sender<()>,
+    guilds_voices_receivers: Arc<tokio::sync::RwLock<HashMap<GuildId, VoiceReceiver>>>,
 }
 
 impl TypeMapKey for RecognizerData {
@@ -51,13 +57,13 @@ struct Handler {
 
 impl Handler {
     async fn start_recognizer(&self, ctx: &Context) {
-        let (tx, rx) = mpsc::sync_channel::<()>(1);
-        let voice_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>> =
+        let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
+        let guilds_voices_receivers: Arc<tokio::sync::RwLock<HashMap<GuildId, VoiceReceiver>>> =
             Arc::new(Default::default());
         let mut data = ctx.data.write().await;
         data.insert::<RecognizerData>(RecognizerData {
             cancel_sender: tx,
-            voice_receivers: voice_receivers.clone(),
+            guilds_voices_receivers: guilds_voices_receivers.clone(),
         });
 
         let red_alert_handler = self.red_alert_handler.clone();
@@ -65,34 +71,19 @@ impl Handler {
         let voice_config = self.voice_config.clone();
         let ctx = ctx.clone();
         tokio::spawn(async move {
-            let recognizer_signal = Recognizer {
+            let mut recognizer_signal = Recognizer {
                 workers_count: 10,
                 model: recognition_model,
-                voices_storage: GuildsVoicesStorage(voice_receivers.into()),
+                voices_queue: GuildsVoicesReceivers(guilds_voices_receivers),
             }
             .start();
             let mut session_kicked: HashSet<UserId> = HashSet::new();
-            'root: loop {
-                tokio::time::sleep(Duration::from_millis(1)).await;
-
-                match rx.try_recv() {
-                    Ok(()) | Err(mpsc::TryRecvError::Disconnected) => {
-                        break 'root;
-                    }
-                    Err(mpsc::TryRecvError::Empty) => {}
+            loop {
+                guard!(let Some(recognizer_event) = tokio::select! {
+                    recognizer_event = recognizer_signal.recv() => recognizer_event,
+                    _ = &mut rx => None,
                 }
-
-                let recognizer_event = match recognizer_signal.try_recv() {
-                    Ok(recognizer_event) => recognizer_event,
-                    Err(error) => match error {
-                        mpsc::TryRecvError::Empty => {
-                            continue 'root;
-                        }
-                        mpsc::TryRecvError::Disconnected => {
-                            break 'root;
-                        }
-                    },
-                };
+                    else { break });
 
                 let log_prefix = {
                     match recognizer_event.state {
@@ -118,14 +109,14 @@ impl Handler {
                                 "{} Recognition RESULT skipped, because don't have restrictions.",
                                 log_prefix
                             );
-                            continue 'root;
+                            continue;
                         });
                         if session_kicked.contains(&kick_user_id) {
                             info!(
                                 "{} Recognition RESULT skipped, because user already kicked.",
                                 log_prefix
                             );
-                            continue 'root;
+                            continue;
                         }
                         info!(
                             "{} Recognition RESULT will be used for kick, because have restrictions.",
@@ -136,7 +127,7 @@ impl Handler {
                         let ctx = ctx.clone();
                         tokio::spawn(async move {
                             let red_alert_deportations_results = red_alert_handler
-                                .handle(&ctx, information.storage.guild_id, vec![kick_user_id])
+                                .handle(&ctx, information.inner.guild_id, vec![kick_user_id])
                                 .await;
                             let red_alert_deportation_result =
                                 red_alert_deportations_results.get(&kick_user_id).unwrap();
@@ -233,8 +224,8 @@ async fn listen_for_red_alert(ctx: &Context, guild_id: GuildId, channel_id: Chan
             let voice_receiver = VoiceReceiver::with_configuration(Default::default());
             voice_receiver.subscribe(handler.deref_mut());
 
-            let mut voice_receivers = recognizer_data.voice_receivers.write().unwrap();
-            voice_receivers.insert(guild_id, voice_receiver);
+            let mut guilds_voices_receivers = recognizer_data.guilds_voices_receivers.write().await;
+            guilds_voices_receivers.insert(guild_id, voice_receiver);
 
             format!("ОТСЛЕЖИВАЮ КОД КРАСНЫЙ В КАНАЛЕ {channel_name}...")
         } else {
@@ -258,8 +249,8 @@ async fn exit_for_red_alert(ctx: &Context, guild_id: GuildId) -> String {
         if manager.remove(guild_id).await.is_err() {
             format!("ПРОИЗОШЛА ОШИБКА! НЕ ПОЛУЧАЕТСЯ ОТКЛЮЧИТЬСЯ...")
         } else if let Some(recognizer_data) = data.get::<RecognizerData>() {
-            let mut voice_receivers = recognizer_data.voice_receivers.write().unwrap();
-            voice_receivers.remove(&guild_id);
+            let mut guilds_voices_receivers = recognizer_data.guilds_voices_receivers.write().await;
+            guilds_voices_receivers.remove(&guild_id);
 
             format!("ПРЕКРАЩАЮ ОТСЛЕЖИВАНИЕ КАНАЛА!")
         } else {

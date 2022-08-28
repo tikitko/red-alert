@@ -19,6 +19,7 @@ voice:
   aliases:
     "алена": 111111111111111111
     "вадим": 222222222222222222
+  similarity_threshold: 0.65
 ```
 
 (Optional) Red Alert Logging Configuration `log_config.yaml`:

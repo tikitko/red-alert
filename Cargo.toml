@@ -1,6 +1,6 @@
 [package]
 name = "red-alert"
-version = "0.0.7"
+version = "0.0.8"
 edition = "2021"
 
 [dependencies]
@@ -9,8 +9,11 @@ log4rs = "1.1.1"
 guard = "0.5.1"
 bimap = "0.6.2"
 config = "0.13.1"
-voskrust = { git = "https://github.com/tikitko/voskrust.git" }
-songbird = "0.2.2"
+voskrust = { git = "https://github.com/tikitko/voskrust.git", rev = "93a5a11" }
+songbird = "0.3.0"
 fon = "0.6.0"
-serenity = { version = "0.10", default-features = false, features = ["builder", "cache", "client", "gateway", "model", "utils", "rustls_backend", "collector", "voice"] }
+serenity = { version = "0.11", default-features = false, features = ["builder", "cache", "client", "gateway", "model", "utils", "rustls_backend", "collector", "voice"] }
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
+ngrammatic = "0.4.0"
+async-trait = "0.1.57"
+uuid = { version = "1.1.2", features = ["v4"] }

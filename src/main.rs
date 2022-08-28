@@ -84,13 +84,24 @@ impl Handler {
                 }
                     else { break });
 
-                let log_prefix = {
-                    match recognizer_state {
-                        RecognizerState::RecognitionStart(i)
-                        | RecognizerState::RecognitionResult(i, _)
-                        | RecognizerState::RecognitionEnd(i) => {
-                            format!("[UID:{}]", i.user_id.0)
+                let log_prefix = match recognizer_state {
+                    RecognizerState::RecognitionStart(info)
+                    | RecognizerState::RecognitionResult(info, _)
+                    | RecognizerState::RecognitionEnd(info) => {
+                        let mut prefix_parts: Vec<String> = vec![];
+                        let guild_id = info.inner.guild_id;
+                        if let Some(guild) = ctx.cache.guild(guild_id) {
+                            prefix_parts.push(format!("[G:{}]", guild.name));
+                        } else {
+                            prefix_parts.push(format!("[GID:{}]", guild_id));
                         }
+                        let user_id = info.user_id;
+                        if let Some(user) = ctx.cache.user(user_id) {
+                            prefix_parts.push(format!("[U:{}#{}]", user.name, user.discriminator));
+                        } else {
+                            prefix_parts.push(format!("[UID:{}]", user_id));
+                        }
+                        prefix_parts.join("")
                     }
                 };
                 match recognizer_state {

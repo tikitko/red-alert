@@ -9,6 +9,7 @@ use songbird::{Call, CoreEvent, Event, EventContext, EventHandler as VoiceEventH
 use std::collections::{HashMap, LinkedList};
 use std::sync::Arc;
 use tokio::sync::*;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct ReceivingVoiceContainer {
@@ -187,34 +188,60 @@ impl QueuedItemsContainer for VoiceReceiver {
 impl VoiceEventHandler for VoiceReceiver {
     async fn act(&self, ctx: &EventContext<'_>) -> Option<Event> {
         use EventContext as Ctx;
+        let event_uuid = Uuid::new_v4();
         match ctx {
             Ctx::SpeakingStateUpdate(speaking) => {
-                debug!("VoiceEvent SpeakingStateUpdate: {:?}.", speaking);
+                debug!(
+                    "[{}] VoiceEvent ENTER SpeakingStateUpdate: {:?}.",
+                    event_uuid, speaking
+                );
                 self.update_for_speaking(speaking).await;
+                debug!("[{}] VoiceEvent EXIT SpeakingStateUpdate.", event_uuid);
             }
             Ctx::SpeakingUpdate(data) => {
-                debug!("VoiceEvent SpeakingUpdate: {:?}.", data);
+                debug!(
+                    "[{}] VoiceEvent ENTER SpeakingUpdate: {:?}.",
+                    event_uuid, data
+                );
                 self.update_for_speaking_update_data(data).await;
+                debug!("[{}] VoiceEvent EXIT SpeakingUpdate.", event_uuid);
             }
             Ctx::VoicePacket(data) => {
-                debug!("VoiceEvent VoicePacket: {:?}.", data);
+                debug!("[{}] VoiceEvent ENTER VoicePacket: {:?}.", event_uuid, data);
                 self.update_for_voice_data(data).await;
+                debug!("[{}] VoiceEvent EXIT VoicePacket.", event_uuid);
             }
             Ctx::ClientDisconnect(disconnect) => {
-                debug!("VoiceEvent ClientDisconnect: {:?}.", disconnect);
+                debug!(
+                    "[{}] VoiceEvent ENTER ClientDisconnect: {:?}.",
+                    event_uuid, disconnect
+                );
                 self.update_for_disconnect(disconnect).await;
+                debug!("[{}] VoiceEvent EXIT ClientDisconnect.", event_uuid);
             }
             Ctx::DriverConnect(data) => {
-                debug!("VoiceEvent DriverConnect: {:?}.", data);
+                debug!(
+                    "[{}] VoiceEvent ENTER DriverConnect: {:?}.",
+                    event_uuid, data
+                );
                 self.reset_in_processing().await;
+                debug!("[{}] VoiceEvent EXIT DriverConnect.", event_uuid);
             }
             Ctx::DriverDisconnect(data) => {
-                debug!("VoiceEvent DriverDisconnect: {:?}.", data);
+                debug!(
+                    "[{}] VoiceEvent ENTER DriverDisconnect: {:?}.",
+                    event_uuid, data
+                );
                 self.reset_in_processing().await;
+                debug!("[{}] VoiceEvent EXIT DriverDisconnect.", event_uuid);
             }
             Ctx::DriverReconnect(data) => {
-                debug!("VoiceEvent DriverReconnect: {:?}.", data);
+                debug!(
+                    "[{}] VoiceEvent ENTER DriverReconnect: {:?}.",
+                    event_uuid, data
+                );
                 self.reset_in_processing().await;
+                debug!("[{}] VoiceEvent EXIT DriverReconnect.", event_uuid);
             }
             _ => unimplemented!(),
         }

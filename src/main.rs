@@ -97,7 +97,11 @@ impl Handler {
                         }
                         let user_id = info.user_id;
                         if let Some(user) = ctx.cache.user(user_id) {
-                            prefix_parts.push(format!("[U:{}#{}]", user.name, user.discriminator));
+                            prefix_parts.push(format!(
+                                "[U:{}#{:04}]",
+                                user.name,
+                                user.discriminator.min(9999).max(1)
+                            ));
                         } else {
                             prefix_parts.push(format!("[UID:{}]", user_id));
                         }

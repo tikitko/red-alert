@@ -94,13 +94,13 @@ impl Handler {
                     }
                 };
                 match recognizer_state {
-                    RecognizerState::RecognitionResult(information, result) => {
+                    RecognizerState::RecognitionResult(info, result) => {
                         info!(
                             "{} Recognition RESULT: type: {:?}, text: \"{}\".",
                             log_prefix, result.result_type, result.text
                         );
                         guard!(let Some(kick_user_id) = voice_config.should_kick(
-                            information.user_id,
+                            info.user_id,
                             &result.text
                         )
                             else { continue });
@@ -120,7 +120,7 @@ impl Handler {
                         let ctx = ctx.clone();
                         tokio::spawn(async move {
                             let red_alert_deportations_results = red_alert_handler
-                                .handle(&ctx, information.inner.guild_id, vec![kick_user_id])
+                                .handle(&ctx, info.inner.guild_id, vec![kick_user_id])
                                 .await;
                             let red_alert_deportation_result =
                                 red_alert_deportations_results.get(&kick_user_id).unwrap();
@@ -130,13 +130,13 @@ impl Handler {
                             );
                         });
                     }
-                    RecognizerState::RecognitionStart(information) => {
+                    RecognizerState::RecognitionStart(info) => {
                         info!("{} Recognition STARTED.", log_prefix);
-                        session_kicked.remove(&information.user_id);
+                        session_kicked.remove(&info.user_id);
                     }
-                    RecognizerState::RecognitionEnd(information) => {
+                    RecognizerState::RecognitionEnd(info) => {
                         info!("{} Recognition ENDED.", log_prefix);
-                        session_kicked.remove(&information.user_id);
+                        session_kicked.remove(&info.user_id);
                     }
                 }
             }

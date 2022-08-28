@@ -1,5 +1,5 @@
-mod extended_voice_container;
 mod guilds_voices_receivers;
+mod info_voice_container;
 mod is_sub;
 mod queued_items_container;
 mod recognition;
@@ -9,8 +9,8 @@ mod voice;
 mod voice_config;
 mod voice_receiver;
 
-use extended_voice_container::*;
 use guilds_voices_receivers::*;
+use info_voice_container::*;
 use is_sub::*;
 use queued_items_container::*;
 use recognition::*;
@@ -72,54 +72,47 @@ impl Handler {
         let ctx = ctx.clone();
         tokio::spawn(async move {
             let mut recognizer_signal = Recognizer {
-                workers_count: 10,
                 model: recognition_model,
                 voices_queue: GuildsVoicesReceivers(guilds_voices_receivers),
             }
             .start();
             let mut session_kicked: HashSet<UserId> = HashSet::new();
             loop {
-                guard!(let Some(recognizer_event) = tokio::select! {
-                    recognizer_event = recognizer_signal.recv() => recognizer_event,
+                guard!(let Some(recognizer_state) = tokio::select! {
+                    recognizer_state = recognizer_signal.recv() => recognizer_state,
                     _ = &mut rx => None,
                 }
                     else { break });
 
                 let log_prefix = {
-                    match recognizer_event.state {
-                        RecognizerState::Idle => {
-                            format!("")
-                        }
+                    match recognizer_state {
                         RecognizerState::RecognitionStart(i)
                         | RecognizerState::RecognitionResult(i, _)
                         | RecognizerState::RecognitionEnd(i) => {
-                            format!(
-                                "[W:{}][UID:{}]",
-                                recognizer_event.worker_number, i.user_id.0
-                            )
+                            format!("[UID:{}]", i.user_id.0)
                         }
                     }
                 };
-                match recognizer_event.state {
+                match recognizer_state {
                     RecognizerState::RecognitionResult(information, result) => {
-                        info!("{} Recognition RESULT is {:?}.", log_prefix, result);
-                        guard!(let Some(kick_user_id) =
-                            voice_config.should_kick(information.user_id, &result.text) else {
-                            info!(
-                                "{} Recognition RESULT skipped, because don't have restrictions.",
-                                log_prefix
-                            );
-                            continue;
-                        });
+                        info!(
+                            "{} Recognition RESULT: type: {:?}, text: \"{}\".",
+                            log_prefix, result.result_type, result.text
+                        );
+                        guard!(let Some(kick_user_id) = voice_config.should_kick(
+                            information.user_id,
+                            &result.text
+                        )
+                            else { continue });
                         if session_kicked.contains(&kick_user_id) {
                             info!(
-                                "{} Recognition RESULT skipped, because user already kicked.",
+                                "{} Recognition RESULT skipped. User already kicked.",
                                 log_prefix
                             );
                             continue;
                         }
                         info!(
-                            "{} Recognition RESULT will be used for kick, because have restrictions.",
+                            "{} Recognition RESULT will be used for kick. Have restrictions.",
                             log_prefix
                         );
                         session_kicked.insert(kick_user_id);
@@ -145,7 +138,6 @@ impl Handler {
                         info!("{} Recognition ENDED.", log_prefix);
                         session_kicked.remove(&information.user_id);
                     }
-                    RecognizerState::Idle => {}
                 }
             }
         });

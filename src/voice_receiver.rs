@@ -172,12 +172,12 @@ impl VoiceReceiver {
 
 #[async_trait]
 impl QueuedItemsContainer for VoiceReceiver {
-    type Item = ExtendedVoiceContainer<(), ReceivingVoiceContainer>;
+    type Item = InfoVoiceContainer<(), ReceivingVoiceContainer>;
     async fn next(&self) -> Option<Self::Item> {
         guard!(let Some(voice_container) = self.next_voice().await
             else { return None });
-        Some(ExtendedVoiceContainer {
-            information: (),
+        Some(InfoVoiceContainer {
+            info: (),
             container: voice_container,
         })
     }

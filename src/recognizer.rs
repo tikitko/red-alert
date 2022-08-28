@@ -11,31 +11,23 @@ use tokio::time::*;
 use voskrust::api::Model as VoskModel;
 
 #[derive(Debug, Clone, Copy)]
-pub struct RecognitionInformation<I: Copy> {
+pub struct RecognitionInfo<I: Copy> {
     pub user_id: UserId,
     pub inner: I,
 }
 
 #[derive(Debug, Clone)]
 pub enum RecognizerState<I: Copy> {
-    Idle,
-    RecognitionStart(RecognitionInformation<I>),
-    RecognitionResult(RecognitionInformation<I>, RecognitionResult),
-    RecognitionEnd(RecognitionInformation<I>),
-}
-
-#[derive(Debug, Clone)]
-pub struct RecognizerEvent<I: Copy> {
-    pub worker_number: usize,
-    pub state: RecognizerState<I>,
+    RecognitionStart(RecognitionInfo<I>),
+    RecognitionResult(RecognitionInfo<I>, RecognitionResult),
+    RecognitionEnd(RecognitionInfo<I>),
 }
 
 pub struct Recognizer<
     I: Copy + Send + Sync + Debug + 'static,
     C: for<'a> VoiceContainer<'a> + Send + Sync + 'static,
-    Q: QueuedItemsContainer<Item = ExtendedVoiceContainer<I, C>> + Clone + Send + Sync + 'static,
+    Q: QueuedItemsContainer<Item = InfoVoiceContainer<I, C>> + Clone + Send + Sync + 'static,
 > {
-    pub workers_count: usize,
     pub model: VoskModel,
     pub voices_queue: Q,
 }
@@ -43,86 +35,65 @@ pub struct Recognizer<
 impl<
         I: Copy + Send + Sync + Debug + 'static,
         C: for<'a> VoiceContainer<'a> + Send + Sync + 'static,
-        Q: QueuedItemsContainer<Item = ExtendedVoiceContainer<I, C>> + Clone + Send + Sync + 'static,
+        Q: QueuedItemsContainer<Item = InfoVoiceContainer<I, C>> + Clone + Send + Sync + 'static,
     > Recognizer<I, C, Q>
 {
-    async fn worker_loop(
+    async fn recognition_task(
         sender: Sender<RecognizerState<I>>,
-        voices_queue: Q,
+        info_voice_container: InfoVoiceContainer<I, C>,
         model: VoskModel,
-    ) -> Result<(), Box<dyn Error>> {
-        loop {
-            sleep(Duration::from_millis(100)).await;
-            guard!(let Some(extended_voice_container) = voices_queue.next().await
-            else {
-                sender.send(RecognizerState::Idle).await?;
-                continue;
-            });
-            let recognition_information = RecognitionInformation {
-                user_id: *extended_voice_container.container.user_id(),
-                inner: extended_voice_container.information,
-            };
-            sender
-                .send(RecognizerState::RecognitionStart(recognition_information))
-                .await?;
-            let inner_sender = sender.clone();
-            let inner_model = model.clone();
-            let inner_error = spawn_blocking(move || {
-                let recognition =
-                    Recognition::new(extended_voice_container.container, &inner_model);
-                for recognition_state in recognition {
-                    match recognition_state {
-                        RecognitionState::RepeatedResult | RecognitionState::EmptyResult => {}
-                        RecognitionState::WaitingChunk => {
-                            thread::sleep(Duration::from_millis(1));
-                        }
-                        RecognitionState::Result(recognition_result) => match inner_sender
-                            .blocking_send(RecognizerState::RecognitionResult(
-                                recognition_information,
-                                recognition_result,
-                            )) {
-                            Ok(_) => {}
-                            Err(error) => return Some(error),
-                        },
-                    }
-                }
-                None
-            })
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let recognition_info = RecognitionInfo {
+            user_id: *info_voice_container.container.user_id(),
+            inner: info_voice_container.info,
+        };
+        sender
+            .send(RecognizerState::RecognitionStart(recognition_info))
             .await?;
-            match inner_error {
-                Some(inner_error) => return Err(inner_error.into()),
-                None => {}
-            }
-            sender
-                .send(RecognizerState::RecognitionEnd(recognition_information))
-                .await?;
-        }
-    }
-    pub fn start(self) -> Receiver<RecognizerEvent<I>> {
-        let (tx, rx) = channel(self.workers_count);
-        for worker_index in 0..self.workers_count {
-            let (ntx, mut nrx) = channel(1);
-            let voices_queue = self.voices_queue.clone();
-            let model = self.model.clone();
-            spawn(async move {
-                let _ = Self::worker_loop(ntx, voices_queue, model).await;
-            });
-            let tx = tx.clone();
-            spawn(async move {
-                while let Some(recognizer_state) = nrx.recv().await {
-                    if tx
-                        .send(RecognizerEvent {
-                            worker_number: worker_index + 1,
-                            state: recognizer_state,
-                        })
-                        .await
-                        .is_err()
-                    {
-                        break;
-                    };
+        let inner_sender = sender.clone();
+        spawn_blocking(move || {
+            let recognition = Recognition::new(info_voice_container.container, &model);
+            for recognition_state in recognition {
+                match recognition_state {
+                    RecognitionState::RepeatedResult | RecognitionState::EmptyResult => {}
+                    RecognitionState::WaitingChunk => {
+                        thread::sleep(Duration::from_millis(1));
+                    }
+                    RecognitionState::Result(recognition_result) => match inner_sender
+                        .blocking_send(RecognizerState::RecognitionResult(
+                            recognition_info,
+                            recognition_result,
+                        )) {
+                        Ok(_) => {}
+                        Err(error) => return Err(error),
+                    },
                 }
-            });
-        }
+            }
+            Ok(())
+        })
+        .await??;
+        sender
+            .send(RecognizerState::RecognitionEnd(recognition_info))
+            .await?;
+        Ok(())
+    }
+    pub fn start(self) -> Receiver<RecognizerState<I>> {
+        let (tx, rx) = channel(1);
+        spawn(async move {
+            loop {
+                if tx.is_closed() {
+                    break;
+                }
+                sleep(Duration::from_millis(10)).await;
+                guard!(let Some(info_voice_container) = self.voices_queue.next().await
+                    else { continue });
+                spawn(Self::recognition_task(
+                    tx.clone(),
+                    info_voice_container,
+                    self.model.clone(),
+                ));
+            }
+        });
         rx
     }
 }

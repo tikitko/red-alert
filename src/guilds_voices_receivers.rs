@@ -30,18 +30,18 @@ impl GuildsVoicesReceivers {
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct GuildIdInformation {
+pub struct GuildIdInfo {
     pub guild_id: GuildId,
 }
 
 #[async_trait]
 impl<'a> QueuedItemsContainer for GuildsVoicesReceivers {
-    type Item = ExtendedVoiceContainer<GuildIdInformation, ReceivingVoiceContainer>;
+    type Item = InfoVoiceContainer<GuildIdInfo, ReceivingVoiceContainer>;
     async fn next(&self) -> Option<Self::Item> {
         guard!(let Some(guild_voice) = self.next_guild_voice().await
             else { return None });
-        Some(ExtendedVoiceContainer {
-            information: GuildIdInformation {
+        Some(InfoVoiceContainer {
+            info: GuildIdInfo {
                 guild_id: guild_voice.guild_id,
             },
             container: guild_voice.voice_container,

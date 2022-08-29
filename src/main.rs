@@ -23,8 +23,9 @@ use voice_receiver::*;
 use async_trait::async_trait;
 use config::{Config as ConfigFile, File};
 use guard::guard;
+use serenity::model::gateway::Activity;
 use serenity::model::id::GuildId;
-use serenity::model::prelude::{ChannelId, Message, Ready, UserId};
+use serenity::model::prelude::{ChannelId, Message, OnlineStatus, Ready, UserId};
 use serenity::prelude::{Context, EventHandler, GatewayIntents, Mentionable, TypeMapKey};
 use serenity::Client;
 use songbird::driver::DecodeMode;
@@ -49,9 +50,15 @@ impl TypeMapKey for RecognizerData {
     type Value = Self;
 }
 
+#[derive(Clone)]
+struct HandlerConfig {
+    listening_text: Option<String>,
+    voice: VoiceConfig,
+}
+
 struct Handler {
     recognition_model: VoskModel,
-    voice_config: VoiceConfig,
+    config: HandlerConfig,
     red_alert_handler: Arc<RedAlertHandler>,
 }
 
@@ -68,7 +75,7 @@ impl Handler {
 
         let red_alert_handler = self.red_alert_handler.clone();
         let recognition_model = self.recognition_model.clone();
-        let voice_config = self.voice_config.clone();
+        let voice_config = self.config.voice.clone();
         let ctx = ctx.clone();
         tokio::spawn(async move {
             let mut recognizer_signal = Recognizer {
@@ -210,6 +217,12 @@ impl EventHandler for Handler {
     }
     async fn ready(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
+        let activity = self
+            .config
+            .listening_text
+            .as_ref()
+            .map(|t| Activity::listening(t));
+        ctx.set_presence(activity, OnlineStatus::Online).await;
         self.start_recognizer(&ctx).await;
     }
 }
@@ -375,6 +388,9 @@ async fn main() {
     let token = settings
         .get_string("discord_token")
         .expect("Expected a token in the config!");
+
+    let listening_text = settings.get_string("listening_text").ok();
+
     let vosk_model_path = settings
         .get_string("vosk_model_path")
         .expect("Expected a VOSK model path in the config!");
@@ -425,11 +441,14 @@ async fn main() {
         .event_handler(Handler {
             recognition_model: VoskModel::new(vosk_model_path.as_str())
                 .expect("Incorrect recognition model!"),
-            voice_config: VoiceConfig {
-                target_words,
-                self_words,
-                aliases,
-                similarity_threshold,
+            config: HandlerConfig {
+                listening_text,
+                voice: VoiceConfig {
+                    target_words,
+                    self_words,
+                    aliases,
+                    similarity_threshold,
+                },
             },
             red_alert_handler: Arc::new(RedAlertHandler),
         })

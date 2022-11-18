@@ -26,15 +26,24 @@ impl Into<Handler> for CommandsHandlerConstructor {
             red_alert_handler: self.red_alert_handler.clone(),
             cancel_sender: Arc::new(tokio::sync::Mutex::new(None)),
         });
-        handler.insert_command("код красный".to_string(), TextCommandRedAlert {
-            red_alert_handler: self.red_alert_handler.clone(),
-        });
-        handler.insert_command("отсеживать код красный".to_string(), StartListenCommandRedAlert {
-            guilds_voices_receivers: guilds_voices_receivers.clone(),
-        });
-        handler.insert_command("прекратить код красный".to_string(), StopListenCommandRedAlert {
-            guilds_voices_receivers: guilds_voices_receivers.clone(),
-        });
+        handler.insert_command(
+            "код красный".to_string(),
+            TextCommandRedAlert {
+                red_alert_handler: self.red_alert_handler.clone(),
+            },
+        );
+        handler.insert_command(
+            "отсеживать код красный".to_string(),
+            StartListenCommandRedAlert {
+                guilds_voices_receivers: guilds_voices_receivers.clone(),
+            },
+        );
+        handler.insert_command(
+            "прекратить код красный".to_string(),
+            StopListenCommandRedAlert {
+                guilds_voices_receivers: guilds_voices_receivers.clone(),
+            },
+        );
         handler
     }
 }

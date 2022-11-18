@@ -48,9 +48,7 @@ impl EventHandler for Handler {
             return;
         };
         fn args(string: &String) -> Vec<&str> {
-            string
-                .split(char::is_whitespace)
-                .collect::<Vec<&str>>()
+            string.split(char::is_whitespace).collect::<Vec<&str>>()
         }
         let mut args_commands = self
             .commands

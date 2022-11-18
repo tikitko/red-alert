@@ -1,22 +1,22 @@
-mod commands;
 mod commands_handler;
 mod guilds_voices_receivers;
 mod info_voice_container;
 mod queued_items_container;
 mod recognition;
 mod recognizer;
+mod red_alert_commands_handler;
 mod red_alert_handler;
 mod voice;
 mod voice_config;
 mod voice_receiver;
 
-use commands::*;
 use commands_handler::*;
 use guilds_voices_receivers::*;
 use info_voice_container::*;
 use queued_items_container::*;
 use recognition::*;
 use recognizer::*;
+use red_alert_commands_handler::*;
 use red_alert_handler::*;
 use serenity::Client;
 use voice::*;

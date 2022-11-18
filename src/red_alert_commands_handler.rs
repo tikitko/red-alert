@@ -40,7 +40,7 @@ impl Into<Handler> for CommandsHandlerConstructor {
             },
         );
         handler.insert_command(
-            "отсеживать код красный".to_string(),
+            "отслеживать код красный".to_string(),
             StartListenCommandRedAlert {
                 guilds_voices_receivers: guilds_voices_receivers.clone(),
             },
@@ -67,10 +67,9 @@ struct OnReadyRedAlert {
 impl OnReadyRedAlert {
     async fn start_recognizer(&self, ctx: &Context) {
         let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
-        {
-            let mut cancel_sender = self.cancel_sender.lock().await;
-            *cancel_sender = Some(tx);
-        }
+        let mut cancel_sender = self.cancel_sender.lock().await;
+        *cancel_sender = Some(tx);
+        drop(cancel_sender);
         let guilds_voices_receivers = self.guilds_voices_receivers.clone();
         let recognition_model = self.recognition_model.clone();
         let voice_config = self.config.voice.clone();

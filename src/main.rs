@@ -31,16 +31,16 @@ extern crate async_trait;
 
 #[tokio::main]
 async fn main() {
-    use serenity::prelude::GatewayIntents;
-    use songbird::SerenityInit;
-    use songbird::{Config as SongbirdConfig};
     use config::{Config, File};
-    use std::path::Path;
-    use std::collections::HashMap;
-    use voskrust::api::{set_log_level as set_vosk_log_level, Model as VoskModel};
-    use std::os::raw::c_int;
-    use std::sync::Arc;
+    use serenity::prelude::GatewayIntents;
     use songbird::driver::DecodeMode;
+    use songbird::Config as SongbirdConfig;
+    use songbird::SerenityInit;
+    use std::collections::HashMap;
+    use std::os::raw::c_int;
+    use std::path::Path;
+    use std::sync::Arc;
+    use voskrust::api::{set_log_level as set_vosk_log_level, Model as VoskModel};
 
     let _ = log4rs::init_file("log_config.yaml", Default::default());
 

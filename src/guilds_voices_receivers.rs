@@ -1,5 +1,4 @@
 use crate::*;
-use guard::guard;
 use serenity::model::id::GuildId;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -18,8 +17,9 @@ impl GuildsVoicesReceivers {
     pub async fn next_guild_voice(&self) -> Option<GuildVoice> {
         let guilds_voices_receivers = self.0.read().await;
         for (guild_id, voice_receiver) in guilds_voices_receivers.iter() {
-            guard!(let Some(voice_container) = voice_receiver.next_voice().await
-                else { continue });
+            let Some(voice_container) = voice_receiver.next_voice().await else {
+                continue;
+            };
             return Some(GuildVoice {
                 guild_id: *guild_id,
                 voice_container,
@@ -38,8 +38,9 @@ pub struct GuildIdInfo {
 impl<'a> QueuedItemsContainer for GuildsVoicesReceivers {
     type Item = InfoVoiceContainer<GuildIdInfo, ReceivingVoiceContainer>;
     async fn next(&self) -> Option<Self::Item> {
-        guard!(let Some(guild_voice) = self.next_guild_voice().await
-            else { return None });
+        let Some(guild_voice) = self.next_guild_voice().await else {
+            return None;
+        };
         Some(InfoVoiceContainer {
             info: GuildIdInfo {
                 guild_id: guild_voice.guild_id,

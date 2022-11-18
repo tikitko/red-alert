@@ -71,7 +71,6 @@ impl OnReadyRedAlert {
             let mut cancel_sender = self.cancel_sender.lock().await;
             *cancel_sender = Some(tx);
         }
-
         let guilds_voices_receivers = self.guilds_voices_receivers.clone();
         let recognition_model = self.recognition_model.clone();
         let voice_config = self.config.voice.clone();
@@ -199,20 +198,15 @@ async fn start_listen_red_alert(
     let Some(manager) = songbird::get(ctx).await else {
         return Err(StartListenError::SongbirdMissing);
     };
-
     let (handler_lock, connection_result) = manager.join(guild_id, channel_id).await;
-
     if !connection_result.is_ok() {
         return Err(StartListenError::ConnectingError);
     }
     let mut handler = handler_lock.lock().await;
-
     let voice_receiver = VoiceReceiver::with_configuration(Default::default());
     voice_receiver.subscribe(handler.deref_mut());
-
     let mut guilds_voices_receivers = guilds_voices_receivers.write().await;
     guilds_voices_receivers.insert(guild_id, voice_receiver);
-
     Ok(())
 }
 
@@ -225,9 +219,16 @@ impl Command for StartListenCommandRedAlert {
         let channel_id: Option<ChannelId> = params
             .args
             .first()
-            .map(|a| a.parse::<u64>().ok())
-            .flatten()
-            .map(ChannelId);
+            .map(|a| match Mention::from_str(a) {
+                Ok(mention) => match mention {
+                    Mention::Channel(channel_id) => Some(channel_id),
+                    Mention::Role(_) => None,
+                    Mention::User(_) => None,
+                    Mention::Emoji(_, _) => None,
+                },
+                Err(_) => a.parse::<u64>().ok().map(ChannelId),
+            })
+            .flatten();
         let answer_msg = if let Some(channel_id) = channel_id {
             let channel_name = channel_id.mention();
             match start_listen_red_alert(self.guilds_voices_receivers.clone(), &ctx, guild_id, channel_id)
@@ -396,7 +397,7 @@ impl Command for TextCommandRedAlert {
                     Mention::User(user_id) => Some(user_id),
                     Mention::Emoji(_, _) => None,
                 },
-                Err(_) => None,
+                Err(_) => a.parse::<u64>().ok().map(UserId),
             })
             .collect();
         let answer_msg = process_red_alert(

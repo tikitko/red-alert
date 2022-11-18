@@ -1,5 +1,4 @@
 use crate::*;
-use guard::guard;
 use serenity::model::id::UserId;
 use std::error::Error;
 use std::fmt::Debug;
@@ -85,8 +84,9 @@ impl<
                     break;
                 }
                 sleep(Duration::from_millis(10)).await;
-                guard!(let Some(info_voice_container) = self.voices_queue.next().await
-                    else { continue });
+                let Some(info_voice_container) = self.voices_queue.next().await else {
+                    continue;
+                };
                 spawn(Self::recognition_task(
                     tx.clone(),
                     info_voice_container,

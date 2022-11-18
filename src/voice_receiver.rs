@@ -1,7 +1,6 @@
 use crate::*;
 use async_trait::async_trait;
 use bimap::BiMap;
-use guard::guard;
 use serenity::model::prelude::UserId;
 use songbird::events::context_data::{SpeakingUpdateData, VoiceData};
 use songbird::model::payload::{ClientDisconnect, Speaking};
@@ -137,11 +136,13 @@ impl VoiceReceiver {
     }
 
     async fn update_for_voice_data<'a>(&self, data: &VoiceData<'a>) {
-        guard!(let Some(audio) = data.audio
-            else { return });
+        let Some(audio) = data.audio else {
+            return;
+        };
         let mut processing_clients_voices = self.processing_clients_voices.lock().await;
-        guard!(let Some(processing_client_voice) = processing_clients_voices.get(&data.packet.ssrc)
-            else { return });
+        let Some(processing_client_voice) = processing_clients_voices.get(&data.packet.ssrc) else {
+            return;
+        };
         let mut processing_client_voice = processing_client_voice.write().await;
         processing_client_voice.chunks.push(audio.clone());
         if processing_client_voice.chunks.len() >= self.configuration.cut_voice_chunks_size {
@@ -155,10 +156,12 @@ impl VoiceReceiver {
     async fn update_for_disconnect(&self, disconnect: &ClientDisconnect) {
         let mut processing_clients_voices = self.processing_clients_voices.lock().await;
         let mut ids_map = self.ids_map.write().await;
-        guard!(let Some((ssrc, _)) = ids_map.remove_by_right(&UserId(disconnect.user_id.0))
-            else { return });
-        guard!(let Some(processing_client_voice) = processing_clients_voices.remove(&ssrc)
-            else { return });
+        let Some((ssrc, _)) = ids_map.remove_by_right(&UserId(disconnect.user_id.0)) else {
+            return;
+        };
+        let Some(processing_client_voice) = processing_clients_voices.remove(&ssrc) else {
+            return;
+        };
         processing_client_voice.write().await.is_completed = true;
     }
 
@@ -175,8 +178,9 @@ impl VoiceReceiver {
 impl QueuedItemsContainer for VoiceReceiver {
     type Item = InfoVoiceContainer<(), ReceivingVoiceContainer>;
     async fn next(&self) -> Option<Self::Item> {
-        guard!(let Some(voice_container) = self.next_voice().await
-            else { return None });
+        let Some(voice_container) = self.next_voice().await else {
+            return None;
+        };
         Some(InfoVoiceContainer {
             info: (),
             container: voice_container,

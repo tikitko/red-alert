@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use serenity::model::id::GuildId;
 use serenity::model::prelude::ChannelId;
 use serenity::model::prelude::{Message, Ready};

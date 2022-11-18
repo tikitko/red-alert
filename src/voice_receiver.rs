@@ -1,5 +1,4 @@
 use crate::*;
-use async_trait::async_trait;
 use bimap::BiMap;
 use serenity::model::prelude::UserId;
 use songbird::events::context_data::{SpeakingUpdateData, VoiceData};

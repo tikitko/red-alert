@@ -1,7 +1,14 @@
 use crate::*;
-use async_trait::async_trait;
+use serenity::model::gateway::Activity;
+use serenity::model::id::GuildId;
 use serenity::model::prelude::Mention;
+use serenity::model::prelude::{ChannelId, OnlineStatus, Ready, UserId};
+use serenity::prelude::{Context, Mentionable};
+use std::collections::{HashMap, HashSet};
+use std::ops::DerefMut;
 use std::str::FromStr;
+use std::sync::Arc;
+use voskrust::api::Model as VoskModel;
 
 #[derive(Clone)]
 pub struct RedAlertCommandsConfig {

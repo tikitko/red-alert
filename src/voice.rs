@@ -1,4 +1,3 @@
-use async_trait::async_trait;
 use serenity::model::prelude::UserId;
 use std::ops::Deref;
 

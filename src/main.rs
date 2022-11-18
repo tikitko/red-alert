@@ -18,34 +18,33 @@ use queued_items_container::*;
 use recognition::*;
 use recognizer::*;
 use red_alert_handler::*;
+use serenity::Client;
 use voice::*;
 use voice_config::*;
 use voice_receiver::*;
 
-use async_trait::async_trait;
-use config::{Config as ConfigFile, File};
-use serenity::model::gateway::Activity;
-use serenity::model::id::GuildId;
-use serenity::model::prelude::{ChannelId, OnlineStatus, Ready, UserId};
-use serenity::prelude::{Context, GatewayIntents, Mentionable};
-use serenity::Client;
-use songbird::driver::DecodeMode;
-use songbird::{Config, SerenityInit};
-use std::collections::{HashMap, HashSet};
-use std::ops::DerefMut;
-use std::os::raw::c_int;
-use std::path::Path;
-use std::sync::Arc;
-use voskrust::api::{set_log_level as set_vosk_log_level, Model as VoskModel};
-
 #[macro_use]
 extern crate log;
 
+#[macro_use]
+extern crate async_trait;
+
 #[tokio::main]
 async fn main() {
+    use serenity::prelude::GatewayIntents;
+    use songbird::SerenityInit;
+    use songbird::{Config as SongbirdConfig};
+    use config::{Config, File};
+    use std::path::Path;
+    use std::collections::HashMap;
+    use voskrust::api::{set_log_level as set_vosk_log_level, Model as VoskModel};
+    use std::os::raw::c_int;
+    use std::sync::Arc;
+    use songbird::driver::DecodeMode;
+
     let _ = log4rs::init_file("log_config.yaml", Default::default());
 
-    let settings = ConfigFile::builder()
+    let settings = Config::builder()
         .add_source(File::from(Path::new("config.yaml")))
         .build()
         .expect("You should setup file \"config.yaml\"!");
@@ -117,7 +116,7 @@ async fn main() {
             },
             red_alert_handler: Arc::new(RedAlertHandler),
         }))
-        .register_songbird_from_config(Config::default().decode_mode(DecodeMode::Decode))
+        .register_songbird_from_config(SongbirdConfig::default().decode_mode(DecodeMode::Decode))
         .await
         .expect("Err creating client");
 

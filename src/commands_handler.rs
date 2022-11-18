@@ -3,7 +3,6 @@ use serenity::model::prelude::ChannelId;
 use serenity::model::prelude::{Message, Ready};
 use serenity::model::user::User;
 use serenity::prelude::{Context, EventHandler};
-use std::cmp::Ordering;
 use std::collections::HashMap;
 
 #[async_trait]
@@ -54,17 +53,7 @@ impl EventHandler for Handler {
             .iter()
             .map(|i| (args(i.0), i.1))
             .collect::<Vec<(Vec<&str>, &Box<dyn Command + Send + Sync + 'static>)>>();
-        args_commands.sort_by(|f, s| {
-            let f_len = f.0.len();
-            let s_len = s.0.len();
-            if f_len == s_len {
-                Ordering::Equal
-            } else if f_len > s_len {
-                Ordering::Less
-            } else {
-                Ordering::Greater
-            }
-        });
+        args_commands.sort_by(|f, s| s.0.len().partial_cmp(&f.0.len()).unwrap());
         let content_args = args(&msg.content);
         for (args, command) in args_commands {
             let Some(args) = content_args.as_slice().strip_prefix(args.as_slice()) else {

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 mod commands_handler;
 mod guilds_voices_receivers;
 mod info_voice_container;

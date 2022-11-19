@@ -8,6 +8,21 @@ pub enum RedAlertDeportationResult {
     Error(SerenityError),
 }
 
+impl RedAlertDeportationResult {
+    pub fn is_deported(&self) -> bool {
+        match self {
+            RedAlertDeportationResult::Deported => true,
+            RedAlertDeportationResult::NotFound | RedAlertDeportationResult::Error(_) => false,
+        }
+    }
+    pub fn is_not_found(&self) -> bool {
+        match self {
+            RedAlertDeportationResult::NotFound => true,
+            RedAlertDeportationResult::Deported | RedAlertDeportationResult::Error(_) => false,
+        }
+    }
+}
+
 pub struct RedAlertHandler;
 
 impl RedAlertHandler {

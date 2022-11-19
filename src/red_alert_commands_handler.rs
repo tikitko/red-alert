@@ -24,8 +24,17 @@ pub struct CommandsHandlerConstructor {
 }
 
 enum ActionType {
-    VoiceRedAlert(UserId, UserId, String, bool),
-    TextRedAlert(UserId, UserId, bool),
+    VoiceRedAlert {
+        author_id:UserId,
+        target_id: UserId,
+        reason: String,
+        is_success: bool,
+    },
+    TextRedAlert{
+        author_id:UserId,
+        target_id: UserId,
+        is_success: bool,
+    },
 }
 
 struct ActionInfo {
@@ -194,12 +203,12 @@ impl RedAlertOnReady {
                             );
                             actions_history.lock().await.log_history(
                                 guild_id,
-                                ActionType::VoiceRedAlert(
-                                    info.user_id,
-                                    kick_user_id,
-                                    result.text,
-                                    deportation_result.is_deported(),
-                                ),
+                                ActionType::VoiceRedAlert {
+                                    author_id: info.user_id,
+                                    target_id: kick_user_id,
+                                    reason: result.text,
+                                    is_success: deportation_result.is_deported(),
+                                },
                             );
                         });
                     }
@@ -480,11 +489,11 @@ impl Command for TextRedAlertCommand {
             } => {
                 self.actions_history.lock().await.log_history(
                     guild_id,
-                    ActionType::TextRedAlert(
+                    ActionType::TextRedAlert {
                         author_id,
-                        author_id,
-                        auto_self_kick_result.is_deported(),
-                    ),
+                        target_id: author_id,
+                        is_success: auto_self_kick_result.is_deported(),
+                    },
                 );
                 match auto_self_kick_result {
                     RedAlertDeportationResult::Deported => format!("ВИЖУ ТЫ ЗАБЫЛ УКАЗАТЬ ЦЕЛЬ ДЛЯ КРАСНОГО КОДА, НИЧЕГО... ШМАЛЬНЕМ В ТЕБЯ! (ИСПОЛЬЗУЙ ТЕГИ) ПРИНЯТО К ИСПОЛНЕНИЮ!"),
@@ -495,7 +504,11 @@ impl Command for TextRedAlertCommand {
             CommonRedAlertResult::SingleSuccess { is_self_kick } => {
                 self.actions_history.lock().await.log_history(
                     guild_id,
-                    ActionType::TextRedAlert(author_id, target_users_ids[0], true),
+                    ActionType::TextRedAlert {
+                        author_id,
+                        target_id: target_users_ids[0],
+                        is_success: true,
+                    },
                 );
                 if is_self_kick {
                     format!("КОД КРАСНЫЙ ПОДТВЕРЖДЕН! САМОВЫПИЛ ДЕЛО ДОСТОЙНОЕ!!! 0)00))00")
@@ -510,16 +523,20 @@ impl Command for TextRedAlertCommand {
                 let mut actions_history = self.actions_history.lock().await;
                 actions_history.log_history(
                     guild_id,
-                    ActionType::TextRedAlert(author_id, target_users_ids[0], false),
+                    ActionType::TextRedAlert {
+                        author_id,
+                        target_id: target_users_ids[0],
+                        is_success: false,
+                    }
                 );
                 if let Some(self_kick_result) = auto_self_kick_result {
                     actions_history.log_history(
                         guild_id,
-                        ActionType::TextRedAlert(
+                        ActionType::TextRedAlert {
                             author_id,
-                            author_id,
-                            self_kick_result.is_deported(),
-                        ),
+                            target_id: author_id,
+                            is_success: self_kick_result.is_deported(),
+                        },
                     );
                     match self_kick_result {
                         RedAlertDeportationResult::Deported => format!("В КАНАЛЕ НЕТ ЧЕЛА ДЛЯ КОДА КРАСНОГО, ЗНАЧИТ У ТЕБЯ БЕДЫ С БОШКОЙ, КОД КРАСНЫЙ НА ТЕБЯ!"),
@@ -536,7 +553,11 @@ impl Command for TextRedAlertCommand {
             } => {
                 self.actions_history.lock().await.log_history(
                     guild_id,
-                    ActionType::TextRedAlert(author_id, target_users_ids[0], false),
+                    ActionType::TextRedAlert {
+                        author_id,
+                        target_id: target_users_ids[0],
+                        is_success: false,
+                    },
                 );
                 if is_self_kick_try {
                     format!("АУЧ, МАСЛИНУ ПОЙМАЛ, НЕ СМОГ ОРГАНИЗОВАТЬ ТЕБЕ СУИЦИД0))")
@@ -552,21 +573,21 @@ impl Command for TextRedAlertCommand {
                 for result_index in 0..results.len() {
                     actions_history.log_history(
                         guild_id,
-                        ActionType::TextRedAlert(
+                        ActionType::TextRedAlert {
                             author_id,
-                            target_users_ids[result_index],
-                            results[result_index].is_deported(),
-                        ),
+                            target_id: target_users_ids[result_index],
+                            is_success: results[result_index].is_deported(),
+                        },
                     );
                 }
                 if let Some(auto_self_kick_result) = auto_self_kick_result {
                     actions_history.log_history(
                         guild_id,
-                        ActionType::TextRedAlert(
+                        ActionType::TextRedAlert {
                             author_id,
-                            author_id,
-                            auto_self_kick_result.is_deported(),
-                        ),
+                            target_id: author_id,
+                            is_success: auto_self_kick_result.is_deported(),
+                        },
                     );
                     match auto_self_kick_result {
                         RedAlertDeportationResult::Deported => format!("МАССОВЫЙ КОД КРАСНЫЙ ШТУКА ОПАСНАЯ, ТАК КАК ПО РАЗНЫМ ПРИЧИНАМ Я НИКОГО НЕ КИКНУЛ, КИКНУ ТЕБЯ )В)В)))0"),
@@ -610,10 +631,10 @@ impl Command for ActionsHistoryCommand {
             for action_info_index in 0..guild_history.len() {
                 let time = &guild_history[action_info_index].time.to_rfc2822();
                 let info_string = match &guild_history[action_info_index].r#type {
-                    ActionType::VoiceRedAlert(autor_id, target_id, reason, is_success) => {
-                        let autor = autor_id.mention();
+                    ActionType::VoiceRedAlert { author_id, target_id, reason, is_success } => {
+                        let autor = author_id.mention();
                         let target = target_id.mention();
-                        if autor_id == target_id {
+                        if author_id == target_id {
                             let status = if *is_success {
                                 "САМОВЫПИЛИЛСЯ"
                             } else {
@@ -629,10 +650,10 @@ impl Command for ActionsHistoryCommand {
                             format!("КРИНЖОВИК {target} {status} ГОЛОСОМ МИРОТВОРЦA {autor} ПРИ ПОМОЩИ ФРАЗЫ \"{reason}\".")
                         }
                     }
-                    ActionType::TextRedAlert(autor_id, target_id, is_success) => {
-                        let autor = autor_id.mention();
+                    ActionType::TextRedAlert { author_id, target_id, is_success } => {
+                        let author = author_id.mention();
                         let target = target_id.mention();
-                        if autor_id == target_id {
+                        if author_id == target_id {
                             let status = if *is_success {
                                 "САМОВЫПИЛИЛСЯ"
                             } else {
@@ -645,7 +666,7 @@ impl Command for ActionsHistoryCommand {
                             } else {
                                 "ПОЧТИ... КИКНУТ"
                             };
-                            format!("КРИНЖОВИК {target} {status} КОМАНДОЙ МИРОТВОРЦA {autor}")
+                            format!("КРИНЖОВИК {target} {status} КОМАНДОЙ МИРОТВОРЦA {author}")
                         }
                     }
                 };

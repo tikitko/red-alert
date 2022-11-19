@@ -25,13 +25,13 @@ pub struct CommandsHandlerConstructor {
 
 enum ActionType {
     VoiceRedAlert {
-        author_id:UserId,
+        author_id: UserId,
         target_id: UserId,
         reason: String,
         is_success: bool,
     },
-    TextRedAlert{
-        author_id:UserId,
+    TextRedAlert {
+        author_id: UserId,
         target_id: UserId,
         is_success: bool,
     },
@@ -527,7 +527,7 @@ impl Command for TextRedAlertCommand {
                         author_id,
                         target_id: target_users_ids[0],
                         is_success: false,
-                    }
+                    },
                 );
                 if let Some(self_kick_result) = auto_self_kick_result {
                     actions_history.log_history(
@@ -631,7 +631,12 @@ impl Command for ActionsHistoryCommand {
             for action_info_index in 0..guild_history.len() {
                 let time = &guild_history[action_info_index].time.to_rfc2822();
                 let info_string = match &guild_history[action_info_index].r#type {
-                    ActionType::VoiceRedAlert { author_id, target_id, reason, is_success } => {
+                    ActionType::VoiceRedAlert {
+                        author_id,
+                        target_id,
+                        reason,
+                        is_success,
+                    } => {
                         let autor = author_id.mention();
                         let target = target_id.mention();
                         if author_id == target_id {
@@ -650,7 +655,11 @@ impl Command for ActionsHistoryCommand {
                             format!("КРИНЖОВИК {target} {status} ГОЛОСОМ МИРОТВОРЦA {autor} ПРИ ПОМОЩИ ФРАЗЫ \"{reason}\".")
                         }
                     }
-                    ActionType::TextRedAlert { author_id, target_id, is_success } => {
+                    ActionType::TextRedAlert {
+                        author_id,
+                        target_id,
+                        is_success,
+                    } => {
                         let author = author_id.mention();
                         let target = target_id.mention();
                         if author_id == target_id {

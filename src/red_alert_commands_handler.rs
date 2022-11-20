@@ -604,7 +604,8 @@ impl Command for TextRedAlertCommand {
                             RedAlertDeportationResult::NotFound => "НЕ В КАНАЛЕ",
                             RedAlertDeportationResult::Error(_) => "ОШИБКА (ПРОЧНЫЙ СУ*А)",
                         };
-                        result_strings.push(format!("{user_name} СТАТУС: {deport_status}"))
+                        let record_number = index + 1;
+                        result_strings.push(format!(" {record_number}. {user_name} СТАТУС: {deport_status}."))
                     }
                     let result_string = result_strings.join("\n");
                     format!("ОУ, МАССОВЫЙ КОД КРАСНЫЙ? СТАТУС ВЫКОСА КРИНЖОВИКОВ:\n{result_string}")
@@ -668,7 +669,7 @@ impl Command for ActionsHistoryCommand {
                             } else {
                                 "ПОПЫТАЛСЯ САМОВЫПИЛИТЬСЯ"
                             };
-                            format!("КРИНЖОВИК {target} {status} КОМАНДОЙ.")
+                            format!("КРИНЖОВИК {target} {status} КОМАНДОЙ")
                         } else {
                             let status = if *is_success {
                                 "КИКНУТ"
@@ -680,7 +681,7 @@ impl Command for ActionsHistoryCommand {
                     }
                 };
                 let record_number = action_info_index + 1;
-                result_strings.push(format!(" {record_number}. [ВРЕМЯ: {time}] {info_string}"));
+                result_strings.push(format!(" {record_number}. [ВРЕМЯ: {time}] {info_string}."));
             }
             let result_string = result_strings.join("\n");
             format!("ИСТОРИЯ ВЫКОСА КРИНЖОВИКОВ:\n{result_string}")

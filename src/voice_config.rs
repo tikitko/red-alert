@@ -1,8 +1,9 @@
 use ngrammatic::CorpusBuilder;
+use serde::{Deserialize, Serialize};
 use serenity::model::prelude::UserId;
 use std::collections::HashMap;
 
-#[derive(Clone)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct VoiceConfig {
     pub target_words: Vec<String>,
     pub self_words: Vec<String>,

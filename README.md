@@ -4,13 +4,17 @@ VOSK Library `libvosk.a`: https://github.com/tikitko/voskrust/blob/main/README.m
 
 VOSK Models: https://alphacephei.com/vosk/models
 
-Red Alert Configuration `config.yaml`:
+Red Alert Main Configuration `config.yaml`:
 ```yaml
 discord_token: "DISCORD_TOKEN"
 listening_text: "красную тревогу..."
 vosk_model_path: "vosk-model-small-ru-0.22"
 vosk_log_level: -1
-voice:
+```
+
+Red Alert Guilds Voice Configuration `guilds_voice_config.yaml`:
+```yaml
+base:
   target_words:
     - "красная тревога"
     - "код красный"
@@ -21,9 +25,10 @@ voice:
     "алена": 111111111111111111
     "вадим": 222222222222222222
   similarity_threshold: 0.65
+specific:
 ```
 
-(Optional) Red Alert Logging Configuration `log_config.yaml`:
+(Optional) Red Alert Log Configuration `log_config.yaml`:
 ```yaml
 refresh_rate: 15 seconds
 appenders:

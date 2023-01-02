@@ -1,5 +1,6 @@
 use crate::*;
 use chrono::{offset, DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use serenity::model::gateway::Activity;
 use serenity::model::id::GuildId;
 use serenity::model::prelude::Mention;
@@ -9,17 +10,13 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use std::ops::DerefMut;
 use std::str::FromStr;
 use std::sync::Arc;
+use tokio::sync::oneshot::{channel, Sender};
+use tokio::sync::{Mutex, RwLock};
 use voskrust::api::Model as VoskModel;
-
-#[derive(Clone)]
-pub struct RedAlertCommandsConfig {
-    pub listening_text: Option<String>,
-    pub voice: VoiceConfig,
-}
 
 pub struct CommandsHandlerConstructor {
     pub recognition_model: VoskModel,
-    pub config: RedAlertCommandsConfig,
+    pub listening_text: Option<String>,
     pub red_alert_handler: Arc<RedAlertHandler>,
 }
 
@@ -62,68 +59,86 @@ impl ActionsHistory {
     }
 }
 
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
+struct GuildsVoiceConfig {
+    base: VoiceConfig,
+    specific: HashMap<u64, VoiceConfig>,
+}
+
+impl GuildsVoiceConfig {
+    const CONFIG_PATH: &str = "guilds_voice_config.yaml";
+    fn read() -> GuildsVoiceConfig {
+        let config_string =
+            std::fs::read_to_string(Self::CONFIG_PATH).expect("Guild voice config read error!");
+        let config: GuildsVoiceConfig =
+            serde_yaml::from_str(&config_string).expect("Guild voice config deserialize error!");
+        config
+    }
+    fn write(&self) {
+        let config_string =
+            serde_yaml::to_string(self).expect("Guild voice config serialize error!");
+        std::fs::write(Self::CONFIG_PATH, config_string).expect("Guild voice config write error!");
+    }
+    fn get(&self, guild_id: &GuildId) -> &VoiceConfig {
+        self.specific.get(&guild_id.0).unwrap_or(&self.base)
+    }
+}
+
 impl Into<Handler> for CommandsHandlerConstructor {
     fn into(self) -> Handler {
-        let guilds_voices_receivers: Arc<tokio::sync::RwLock<HashMap<GuildId, VoiceReceiver>>> =
+        let guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>> =
             Arc::new(Default::default());
-        let actions_history: Arc<tokio::sync::Mutex<ActionsHistory>> = Arc::new(Default::default());
+        let actions_history: Arc<Mutex<ActionsHistory>> = Arc::new(Default::default());
+        let guilds_voice_config = Arc::new(RwLock::new(GuildsVoiceConfig::read()));
         let mut handler = Handler::new(RedAlertOnReady {
             guilds_voices_receivers: guilds_voices_receivers.clone(),
             actions_history: actions_history.clone(),
+            guilds_voice_config: guilds_voice_config.clone(),
             recognition_model: self.recognition_model,
-            config: self.config,
+            listening_text: self.listening_text,
             red_alert_handler: self.red_alert_handler.clone(),
-            cancel_sender: Arc::new(tokio::sync::Mutex::new(None)),
+            cancel_sender: Arc::new(Mutex::new(None)),
         });
-        handler.insert_command(
-            "код красный".to_string(),
-            TextRedAlertCommand {
-                red_alert_handler: self.red_alert_handler.clone(),
-                actions_history: actions_history.clone(),
-            },
-        );
-        handler.insert_command(
-            "отслеживать код красный".to_string(),
-            StartListenRedAlertCommand {
-                guilds_voices_receivers: guilds_voices_receivers.clone(),
-            },
-        );
-        handler.insert_command(
-            "прекратить код красный".to_string(),
-            StopListenRedAlertCommand {
-                guilds_voices_receivers: guilds_voices_receivers.clone(),
-            },
-        );
-        handler.insert_command(
-            "отчет код красный".to_string(),
-            ActionsHistoryCommand {
-                actions_history: actions_history.clone(),
-            },
-        );
+        handler.push_command(TextRedAlertCommand {
+            red_alert_handler: self.red_alert_handler.clone(),
+            actions_history: actions_history.clone(),
+        });
+        handler.push_command(StartListenRedAlertCommand {
+            guilds_voices_receivers: guilds_voices_receivers.clone(),
+        });
+        handler.push_command(StopListenRedAlertCommand {
+            guilds_voices_receivers: guilds_voices_receivers.clone(),
+        });
+        handler.push_command(ActionsHistoryCommand {
+            actions_history: actions_history.clone(),
+        });
+        handler.push_command(GuildsVoiceConfigCommand {
+            guilds_voice_config: guilds_voice_config.clone(),
+        });
         handler
     }
 }
 
 struct RedAlertOnReady {
-    guilds_voices_receivers: Arc<tokio::sync::RwLock<HashMap<GuildId, VoiceReceiver>>>,
-    actions_history: Arc<tokio::sync::Mutex<ActionsHistory>>,
+    guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
+    actions_history: Arc<Mutex<ActionsHistory>>,
+    guilds_voice_config: Arc<RwLock<GuildsVoiceConfig>>,
     recognition_model: VoskModel,
-    config: RedAlertCommandsConfig,
+    listening_text: Option<String>,
     red_alert_handler: Arc<RedAlertHandler>,
-    #[allow(dead_code)]
-    cancel_sender: Arc<tokio::sync::Mutex<Option<tokio::sync::oneshot::Sender<()>>>>,
+    cancel_sender: Arc<Mutex<Option<Sender<()>>>>,
 }
 
 impl RedAlertOnReady {
     async fn start_recognizer(&self, ctx: &Context) {
-        let (tx, mut rx) = tokio::sync::oneshot::channel::<()>();
+        let (tx, mut rx) = channel::<()>();
         let mut cancel_sender = self.cancel_sender.lock().await;
         *cancel_sender = Some(tx);
         drop(cancel_sender);
         let guilds_voices_receivers = self.guilds_voices_receivers.clone();
         let actions_history = self.actions_history.clone();
         let recognition_model = self.recognition_model.clone();
-        let voice_config = self.config.voice.clone();
+        let guilds_voice_config = self.guilds_voice_config.clone();
         let red_alert_handler = self.red_alert_handler.clone();
         let ctx = ctx.clone();
         tokio::spawn(async move {
@@ -171,10 +186,11 @@ impl RedAlertOnReady {
                             "{} Recognition RESULT: type: {:?}, text: \"{}\".",
                             log_prefix, result.result_type, result.text
                         );
-                        let Some(kick_user_id) = voice_config.should_kick(
-                            info.user_id,
-                            &result.text
-                        ) else {
+                        let guilds_voice_config = guilds_voice_config.read().await;
+                        let voice_config = guilds_voice_config.get(&info.inner.guild_id);
+                        let kick_user_id = voice_config.should_kick(info.user_id, &result.text);
+                        drop(guilds_voice_config);
+                        let Some(kick_user_id) = kick_user_id else {
                             continue;
                         };
                         if session_kicked.contains(&kick_user_id) {
@@ -230,18 +246,14 @@ impl RedAlertOnReady {
 impl OnReady for RedAlertOnReady {
     async fn process(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
-        let activity = self
-            .config
-            .listening_text
-            .as_ref()
-            .map(|t| Activity::listening(t));
+        let activity = self.listening_text.as_ref().map(|t| Activity::listening(t));
         ctx.set_presence(activity, OnlineStatus::Online).await;
         self.start_recognizer(&ctx).await;
     }
 }
 
 struct StartListenRedAlertCommand {
-    guilds_voices_receivers: Arc<tokio::sync::RwLock<HashMap<GuildId, VoiceReceiver>>>,
+    guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
 }
 
 enum StartListenError {
@@ -250,7 +262,7 @@ enum StartListenError {
 }
 
 async fn start_listen(
-    guilds_voices_receivers: Arc<tokio::sync::RwLock<HashMap<GuildId, VoiceReceiver>>>,
+    guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
     ctx: &Context,
     guild_id: GuildId,
     channel_id: ChannelId,
@@ -272,6 +284,9 @@ async fn start_listen(
 
 #[async_trait]
 impl Command for StartListenRedAlertCommand {
+    fn prefix_anchor(&self) -> &str {
+        "слушать код красный"
+    }
     async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
             return;
@@ -312,7 +327,7 @@ impl Command for StartListenRedAlertCommand {
 }
 
 struct StopListenRedAlertCommand {
-    guilds_voices_receivers: Arc<tokio::sync::RwLock<HashMap<GuildId, VoiceReceiver>>>,
+    guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
 }
 
 enum StopListenError {
@@ -322,7 +337,7 @@ enum StopListenError {
 }
 
 async fn stop_listen(
-    guilds_voices_receivers: Arc<tokio::sync::RwLock<HashMap<GuildId, VoiceReceiver>>>,
+    guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
     ctx: &Context,
     guild_id: GuildId,
 ) -> Result<(), StopListenError> {
@@ -344,6 +359,9 @@ async fn stop_listen(
 
 #[async_trait]
 impl Command for StopListenRedAlertCommand {
+    fn prefix_anchor(&self) -> &str {
+        "прекратить слушать код красный"
+    }
     async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
             return;
@@ -368,7 +386,7 @@ impl Command for StopListenRedAlertCommand {
 }
 
 struct TextRedAlertCommand {
-    actions_history: Arc<tokio::sync::Mutex<ActionsHistory>>,
+    actions_history: Arc<Mutex<ActionsHistory>>,
     red_alert_handler: Arc<RedAlertHandler>,
 }
 
@@ -459,6 +477,9 @@ async fn common_red_alert(
 
 #[async_trait]
 impl Command for TextRedAlertCommand {
+    fn prefix_anchor(&self) -> &str {
+        "код красный"
+    }
     async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
             return;
@@ -605,7 +626,9 @@ impl Command for TextRedAlertCommand {
                             RedAlertDeportationResult::Error(_) => "ОШИБКА (ПРОЧНЫЙ СУ*А)",
                         };
                         let record_number = index + 1;
-                        result_strings.push(format!(" {record_number}. {user_name} СТАТУС: {deport_status}."))
+                        result_strings.push(format!(
+                            " {record_number}. {user_name} СТАТУС: {deport_status}."
+                        ))
                     }
                     let result_string = result_strings.join("\n");
                     format!("ОУ, МАССОВЫЙ КОД КРАСНЫЙ? СТАТУС ВЫКОСА КРИНЖОВИКОВ:\n{result_string}")
@@ -617,11 +640,14 @@ impl Command for TextRedAlertCommand {
 }
 
 struct ActionsHistoryCommand {
-    actions_history: Arc<tokio::sync::Mutex<ActionsHistory>>,
+    actions_history: Arc<Mutex<ActionsHistory>>,
 }
 
 #[async_trait]
 impl Command for ActionsHistoryCommand {
+    fn prefix_anchor(&self) -> &str {
+        "отчет код красный"
+    }
     async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
             return;
@@ -690,6 +716,30 @@ impl Command for ActionsHistoryCommand {
         };
         (*actions_history).0.remove(&guild_id);
         drop(actions_history);
+        let _ = params.channel_id.say(&ctx, answer_msg).await;
+    }
+}
+
+struct GuildsVoiceConfigCommand {
+    guilds_voice_config: Arc<RwLock<GuildsVoiceConfig>>,
+}
+
+#[async_trait]
+impl Command for GuildsVoiceConfigCommand {
+    fn prefix_anchor(&self) -> &str {
+        "настройка голоса код красный"
+    }
+    async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
+        let Some(guild_id) = params.guild_id else {
+            return;
+        };
+        let mut args = VecDeque::from(params.args.to_vec());
+        let answer_msg = if let action = args.pop_front() {
+            //match action {}
+            format!("НЕ УКАЗАНО ДЕЙСТВИЕ!")
+        } else {
+            format!("НЕ УКАЗАНО ДЕЙСТВИЕ!")
+        };
         let _ = params.channel_id.say(&ctx, answer_msg).await;
     }
 }

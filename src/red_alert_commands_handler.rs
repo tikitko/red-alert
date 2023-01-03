@@ -90,32 +90,36 @@ impl Into<Handler> for CommandsHandlerConstructor {
             Arc::new(Default::default());
         let actions_history: Arc<Mutex<ActionsHistory>> = Arc::new(Default::default());
         let guilds_voice_config = Arc::new(RwLock::new(GuildsVoiceConfig::read()));
-        let mut handler = Handler::new(RedAlertOnReady {
-            guilds_voices_receivers: guilds_voices_receivers.clone(),
-            actions_history: actions_history.clone(),
-            guilds_voice_config: guilds_voice_config.clone(),
-            recognition_model: self.recognition_model,
-            listening_text: self.listening_text,
-            red_alert_handler: self.red_alert_handler.clone(),
-            cancel_sender: Arc::new(Mutex::new(None)),
-        });
-        handler.push_command(TextRedAlertCommand {
-            red_alert_handler: self.red_alert_handler.clone(),
-            actions_history: actions_history.clone(),
-        });
-        handler.push_command(StartListenRedAlertCommand {
-            guilds_voices_receivers: guilds_voices_receivers.clone(),
-        });
-        handler.push_command(StopListenRedAlertCommand {
-            guilds_voices_receivers: guilds_voices_receivers.clone(),
-        });
-        handler.push_command(ActionsHistoryCommand {
-            actions_history: actions_history.clone(),
-        });
-        handler.push_command(GuildsVoiceConfigCommand {
-            guilds_voice_config: guilds_voice_config.clone(),
-        });
-        handler
+        Handler {
+            help_command_prefix_anchor: "код красный помощь".to_string(),
+            on_ready: Box::new(RedAlertOnReady {
+                guilds_voices_receivers: guilds_voices_receivers.clone(),
+                actions_history: actions_history.clone(),
+                guilds_voice_config: guilds_voice_config.clone(),
+                recognition_model: self.recognition_model,
+                listening_text: self.listening_text,
+                red_alert_handler: self.red_alert_handler.clone(),
+                cancel_sender: Arc::new(Mutex::new(None)),
+            }),
+            commands: vec![
+                Box::new(TextRedAlertCommand {
+                    red_alert_handler: self.red_alert_handler.clone(),
+                    actions_history: actions_history.clone(),
+                }),
+                Box::new(StartListenRedAlertCommand {
+                    guilds_voices_receivers: guilds_voices_receivers.clone(),
+                }),
+                Box::new(StopListenRedAlertCommand {
+                    guilds_voices_receivers: guilds_voices_receivers.clone(),
+                }),
+                Box::new(ActionsHistoryCommand {
+                    actions_history: actions_history.clone(),
+                }),
+                Box::new(GuildsVoiceConfigCommand {
+                    guilds_voice_config: guilds_voice_config.clone(),
+                }),
+            ],
+        }
     }
 }
 
@@ -287,6 +291,13 @@ impl Command for StartListenRedAlertCommand {
     fn prefix_anchor(&self) -> &str {
         "слушать код красный"
     }
+    fn help_info<'a>(&'a self) -> Option<HelpInfo<'a>> {
+        Some(HelpInfo {
+            header_suffix: Some("{ID или упоминание канала}"),
+            description:
+                "Начать слушать выбранный голосовой канал на запрещенные и направленные фразы.",
+        })
+    }
     async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
             return;
@@ -359,6 +370,13 @@ async fn stop_listen(
 impl Command for StopListenRedAlertCommand {
     fn prefix_anchor(&self) -> &str {
         "прекратить слушать код красный"
+    }
+    fn help_info<'a>(&'a self) -> Option<HelpInfo<'a>> {
+        Some(HelpInfo {
+            header_suffix: None,
+            description:
+                "Прекратить слушать голосовой канал в котором находится КРИНЖ КИЛЛЕР на запрещенные и направленные фразы.",
+        })
     }
     async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
@@ -477,6 +495,13 @@ async fn common_red_alert(
 impl Command for TextRedAlertCommand {
     fn prefix_anchor(&self) -> &str {
         "код красный"
+    }
+    fn help_info<'a>(&'a self) -> Option<HelpInfo<'a>> {
+        Some(HelpInfo {
+            header_suffix: Some("{ID или упоминание пользователя}*"),
+            description:
+                "* - может быть несколько (через пробел).\nКикает выбранного пользователя из голосового канала если он в нем находится, иначе, кикает исполнителя команды.",
+        })
     }
     async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
@@ -646,6 +671,12 @@ impl Command for ActionsHistoryCommand {
     fn prefix_anchor(&self) -> &str {
         "код красный история"
     }
+    fn help_info<'a>(&'a self) -> Option<HelpInfo<'a>> {
+        Some(HelpInfo {
+            header_suffix: None,
+            description: "Выводит историю всех наказаний которые исполнил КРИНЖ КИЛЛЕР.",
+        })
+    }
     async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
             return;
@@ -802,20 +833,17 @@ impl GuildsVoiceConfigCommand {
                 .self_words
                 .iter()
                 .map(|a| format!(" - {}\n", a))
-                .collect::<Vec<String>>()
-                .join(""),
+                .collect::<String>(),
             guild_voice_config
                 .target_words
                 .iter()
                 .map(|a| format!(" - {}\n", a))
-                .collect::<Vec<String>>()
-                .join(""),
+                .collect::<String>(),
             guild_voice_config
                 .aliases
                 .iter()
                 .map(|a| format!(" - {}: {}\n", a.0, UserId(*a.1).mention()))
-                .collect::<Vec<String>>()
-                .join(""),
+                .collect::<String>(),
             guild_voice_config.similarity_threshold,
         )
     }
@@ -825,6 +853,13 @@ impl GuildsVoiceConfigCommand {
 impl Command for GuildsVoiceConfigCommand {
     fn prefix_anchor(&self) -> &str {
         "код красный фраза"
+    }
+    fn help_info<'a>(&'a self) -> Option<HelpInfo<'a>> {
+        Some(HelpInfo {
+            header_suffix: Some("[запретная/выгоняющая/псевдоним/погрешность/список]"),
+            description:
+                "[запретная] {фраза} - добавляет/удаляет фразу при призношении которой пользователь будет исключен.\n[выгоняющая] {фраза} - добавляет/удаляет фразу при призношении которой пользователь может исключить другого пользователя.\n[псевдоним] {фраза} {ID или упоминание пользователя} - добавляет/удаляет псевдоним для пользователя который можно использовать в распознавателе речи.\n[погрешность] {0.0 - 1.0} - устанавливает погрешность разпознавания речи.\n[список] - список всех фраз.",
+        })
     }
     async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {

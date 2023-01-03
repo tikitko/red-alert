@@ -91,7 +91,7 @@ impl Into<Handler> for CommandsHandlerConstructor {
         let actions_history: Arc<Mutex<ActionsHistory>> = Arc::new(Default::default());
         let guilds_voice_config = Arc::new(RwLock::new(GuildsVoiceConfig::read()));
         Handler {
-            help_command_prefix_anchor: "код красный помощь".to_string(),
+            help_command_prefix_anchor: "кринж киллер помощь".to_string(),
             on_ready: Box::new(RedAlertOnReady {
                 guilds_voices_receivers: guilds_voices_receivers.clone(),
                 actions_history: actions_history.clone(),

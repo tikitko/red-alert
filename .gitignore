@@ -5,4 +5,5 @@ Cargo.lock
 libvosk.a
 /vosk-model-*/
 config.yaml
+guilds_voice_config.yaml
 log_config.yaml

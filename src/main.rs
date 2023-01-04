@@ -1,9 +1,7 @@
 #![allow(dead_code)]
 
 mod components;
-mod red_alert_commands_handler;
-mod red_alert_handler;
-mod red_alert_voice_config;
+mod red_alert;
 
 #[macro_use]
 extern crate log;
@@ -49,11 +47,11 @@ async fn main() {
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
     let mut client = Client::builder(&token, intents)
         .event_handler(
-            red_alert_commands_handler::RedAlertCommandsHandlerConstructor {
+            red_alert::RedAlertCommandsHandlerConstructor {
                 recognition_model: VoskModel::new(vosk_model_path.as_str())
                     .expect("Incorrect recognition model!"),
                 listening_text,
-                red_alert_handler: Arc::new(red_alert_handler::RedAlertHandler),
+                red_alert_handler: Arc::new(red_alert::RedAlertHandler),
             }
             .build(),
         )

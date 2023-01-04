@@ -25,7 +25,7 @@ pub enum RecognizerState<I: Copy> {
 pub struct Recognizer<
     I: Copy + Send + Sync + Debug + 'static,
     C: for<'a> VoiceContainer<'a> + Send + Sync + 'static,
-    Q: QueuedItemsContainer<Item = InfoVoiceContainer<I, C>> + Clone + Send + Sync + 'static,
+    Q: QueuedItemsContainer<Item = InfoVoiceContainer<I, C>> + Send + Sync + 'static,
 > {
     pub model: VoskModel,
     pub voices_queue: Q,
@@ -34,7 +34,7 @@ pub struct Recognizer<
 impl<
         I: Copy + Send + Sync + Debug + 'static,
         C: for<'a> VoiceContainer<'a> + Send + Sync + 'static,
-        Q: QueuedItemsContainer<Item = InfoVoiceContainer<I, C>> + Clone + Send + Sync + 'static,
+        Q: QueuedItemsContainer<Item = InfoVoiceContainer<I, C>> + Send + Sync + 'static,
     > Recognizer<I, C, Q>
 {
     async fn recognition_task(

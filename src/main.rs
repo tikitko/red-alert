@@ -67,12 +67,15 @@ async fn main() {
 
     let intents = GatewayIntents::non_privileged() | GatewayIntents::MESSAGE_CONTENT;
     let mut client = Client::builder(&token, intents)
-        .event_handler(Into::<Handler>::into(CommandsHandlerConstructor {
-            recognition_model: VoskModel::new(vosk_model_path.as_str())
-                .expect("Incorrect recognition model!"),
-            listening_text,
-            red_alert_handler: Arc::new(RedAlertHandler),
-        }))
+        .event_handler(
+            CommandsHandlerConstructor {
+                recognition_model: VoskModel::new(vosk_model_path.as_str())
+                    .expect("Incorrect recognition model!"),
+                listening_text,
+                red_alert_handler: Arc::new(RedAlertHandler),
+            }
+            .build(),
+        )
         .register_songbird_from_config(SongbirdConfig::default().decode_mode(DecodeMode::Decode))
         .await
         .expect("Err creating client");

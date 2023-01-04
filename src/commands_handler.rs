@@ -34,38 +34,6 @@ pub struct PrintTextCommand {
     pub text: String,
 }
 
-impl PrintTextCommand {
-    fn build_help(
-        prefix_anchor: String,
-        commands: &Vec<Box<dyn Command + Send + Sync + 'static>>,
-    ) -> Self {
-        Self {
-            prefix_anchor,
-            help_info: None,
-            text: format!(
-                "{}",
-                commands
-                    .iter()
-                    .filter_map(|command| {
-                        let Some(help_info) = command.help_info() else {
-                            return None
-                        };
-                        Some(format!(
-                            "> **`{}`**\n```{}```\n",
-                            if let Some(header_suffix) = help_info.header_suffix {
-                                format!("{} {}", command.prefix_anchor(), header_suffix)
-                            } else {
-                                command.prefix_anchor().to_string()
-                            },
-                            help_info.description
-                        ))
-                    })
-                    .collect::<String>()
-            ),
-        }
-    }
-}
-
 #[async_trait]
 impl Command for PrintTextCommand {
     fn prefix_anchor(&self) -> &str {
@@ -90,14 +58,20 @@ impl Command for PrintTextCommand {
     }
 }
 
-pub struct Handler {
-    pub help_command_prefix_anchor: String,
+pub struct HelpCommandConfig<F: Fn(&str, HelpInfo) -> String + Send + Sync + 'static> {
+    pub prefix_anchor: String,
+    pub output_prefix: Option<String>,
+    pub output_format_fn: F,
+}
+
+pub struct Handler<F: Fn(&str, HelpInfo) -> String + Send + Sync + 'static> {
+    pub help_command: HelpCommandConfig<F>,
     pub on_ready: Box<dyn OnReady + Send + Sync + 'static>,
     pub commands: Vec<Box<dyn Command + Send + Sync + 'static>>,
 }
 
 #[async_trait]
-impl EventHandler for Handler {
+impl<F: Fn(&str, HelpInfo) -> String + Send + Sync + 'static> EventHandler for Handler<F> {
     async fn message(&self, ctx: Context, msg: Message) {
         if msg.author.bot {
             return;
@@ -105,13 +79,28 @@ impl EventHandler for Handler {
         fn args(string: &str) -> Vec<String> {
             string
                 .split(char::is_whitespace)
-                .map(|v| v.to_lowercase())
+                .map(str::to_lowercase)
                 .collect()
         }
-        let help_command: Box<dyn Command + Send + Sync> = Box::new(PrintTextCommand::build_help(
-            self.help_command_prefix_anchor.clone(),
-            &self.commands,
-        ));
+        let help_command: Box<dyn Command + Send + Sync> = Box::new(PrintTextCommand {
+            prefix_anchor: self.help_command.prefix_anchor.clone(),
+            help_info: None,
+            text: {
+                let mut help_text = self
+                    .commands
+                    .iter()
+                    .filter_map(|command| {
+                        command.help_info().map(|help_info| {
+                            (self.help_command.output_format_fn)(command.prefix_anchor(), help_info)
+                        })
+                    })
+                    .collect::<String>();
+                if let Some(output_prefix) = &self.help_command.output_prefix {
+                    help_text.insert_str(0, output_prefix);
+                }
+                help_text
+            },
+        });
         let args_commands = {
             let mut commands = self
                 .commands

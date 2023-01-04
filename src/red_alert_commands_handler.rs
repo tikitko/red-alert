@@ -84,14 +84,27 @@ impl GuildsVoiceConfig {
     }
 }
 
-impl Into<Handler> for CommandsHandlerConstructor {
-    fn into(self) -> Handler {
+impl CommandsHandlerConstructor {
+    pub fn build(self) -> Handler<impl Fn(&str, HelpInfo) -> String> {
         let guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>> =
             Arc::new(Default::default());
         let actions_history: Arc<Mutex<ActionsHistory>> = Arc::new(Default::default());
         let guilds_voice_config = Arc::new(RwLock::new(GuildsVoiceConfig::read()));
         Handler {
-            help_command_prefix_anchor: "кринж киллер помощь".to_string(),
+            help_command: HelpCommandConfig {
+                prefix_anchor: "кринж киллер помощь".to_string(),
+                output_prefix: None,
+                output_format_fn: |prefix_anchor, help_info| {
+                    format!(
+                        "> **`{}`**\n```{}```\n",
+                        help_info
+                            .header_suffix
+                            .map(|header_suffix| format!("{} {}", prefix_anchor, header_suffix))
+                            .unwrap_or(prefix_anchor.to_string()),
+                        help_info.description
+                    )
+                },
+            },
             on_ready: Box::new(RedAlertOnReady {
                 guilds_voices_receivers: guilds_voices_receivers.clone(),
                 actions_history: actions_history.clone(),

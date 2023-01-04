@@ -1,4 +1,5 @@
-use crate::*;
+use super::super::base::*;
+use super::super::voice::*;
 use bimap::BiMap;
 use serenity::model::prelude::UserId;
 use songbird::events::context_data::{SpeakingUpdateData, VoiceData};
@@ -9,18 +10,19 @@ use std::sync::Arc;
 use tokio::sync::*;
 use uuid::Uuid;
 
+#[derive(Clone, Copy)]
+pub struct ReceivingVoiceInfo {
+    pub client_user_id: UserId,
+}
+
 #[derive(Clone)]
 pub struct ReceivingVoiceContainer {
-    client_user_id: UserId,
     client_voice: Arc<RwLock<Voice>>,
 }
 
 #[async_trait]
 impl<'a> VoiceContainer<'a> for ReceivingVoiceContainer {
     type Voice = RwLockReadGuard<'a, Voice>;
-    fn user_id(&self) -> &UserId {
-        &self.client_user_id
-    }
     async fn voice(&'a self) -> Self::Voice {
         self.client_voice.read().await
     }
@@ -72,17 +74,23 @@ impl VoiceReceiver {
         handler.add_global_event(CoreEvent::DriverReconnect.into(), self.clone());
     }
 
-    pub async fn next_voice(&self) -> Option<ReceivingVoiceContainer> {
+    pub async fn next_voice(
+        &self,
+    ) -> Option<InfoVoiceContainer<ReceivingVoiceInfo, ReceivingVoiceContainer>> {
         let ids_map = self.ids_map.read().await;
         let mut queue_clients_voices = self.queue_clients_voices.lock().await;
         let mut voices_to_revert: Vec<Arc<RwLock<Voice>>> = vec![];
-        let mut voice_container_to_return: Option<ReceivingVoiceContainer> = None;
+        let mut voice_container_to_return: Option<
+            InfoVoiceContainer<ReceivingVoiceInfo, ReceivingVoiceContainer>,
+        > = None;
         while let Some(client_voice) = queue_clients_voices.pop_front() {
             let client_voice_id = client_voice.read().await.id;
             if let Some(client_user_id) = ids_map.get_by_left(&client_voice_id) {
-                let voice_container = ReceivingVoiceContainer {
-                    client_user_id: *client_user_id,
-                    client_voice,
+                let voice_container = InfoVoiceContainer {
+                    info: ReceivingVoiceInfo {
+                        client_user_id: *client_user_id,
+                    },
+                    container: ReceivingVoiceContainer { client_voice },
                 };
                 voice_container_to_return = Some(voice_container);
                 break;
@@ -175,15 +183,9 @@ impl VoiceReceiver {
 
 #[async_trait]
 impl QueuedItemsContainer for VoiceReceiver {
-    type Item = InfoVoiceContainer<(), ReceivingVoiceContainer>;
+    type Item = InfoVoiceContainer<ReceivingVoiceInfo, ReceivingVoiceContainer>;
     async fn next(&self) -> Option<Self::Item> {
-        let Some(voice_container) = self.next_voice().await else {
-            return None;
-        };
-        Some(InfoVoiceContainer {
-            info: (),
-            container: voice_container,
-        })
+        self.next_voice().await
     }
 }
 

@@ -1,4 +1,6 @@
-use crate::*;
+use super::components::*;
+use super::red_alert_handler::*;
+use super::red_alert_voice_config::*;
 use chrono::{offset, DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serenity::model::gateway::Activity;
@@ -14,7 +16,7 @@ use tokio::sync::oneshot::{channel, Sender};
 use tokio::sync::{Mutex, RwLock};
 use voskrust::api::Model as VoskModel;
 
-pub struct CommandsHandlerConstructor {
+pub struct RedAlertCommandsHandlerConstructor {
     pub recognition_model: VoskModel,
     pub listening_text: Option<String>,
     pub red_alert_handler: Arc<RedAlertHandler>,
@@ -60,17 +62,17 @@ impl ActionsHistory {
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
-struct GuildsVoiceConfig {
-    base: VoiceConfig,
-    specific: HashMap<u64, VoiceConfig>,
+struct RedAlertGuildsVoiceConfig {
+    base: RedAlertVoiceConfig<u64>,
+    specific: HashMap<u64, RedAlertVoiceConfig<u64>>,
 }
 
-impl GuildsVoiceConfig {
+impl RedAlertGuildsVoiceConfig {
     const CONFIG_PATH: &str = "guilds_voice_config.yaml";
-    fn read() -> GuildsVoiceConfig {
+    fn read() -> RedAlertGuildsVoiceConfig {
         let config_string =
             std::fs::read_to_string(Self::CONFIG_PATH).expect("Guild voice config read error!");
-        let config: GuildsVoiceConfig =
+        let config: RedAlertGuildsVoiceConfig =
             serde_yaml::from_str(&config_string).expect("Guild voice config deserialize error!");
         config
     }
@@ -79,17 +81,17 @@ impl GuildsVoiceConfig {
             serde_yaml::to_string(self).expect("Guild voice config serialize error!");
         std::fs::write(Self::CONFIG_PATH, config_string).expect("Guild voice config write error!");
     }
-    fn get(&self, guild_id: &GuildId) -> &VoiceConfig {
+    fn get(&self, guild_id: &GuildId) -> &RedAlertVoiceConfig<u64> {
         self.specific.get(&guild_id.0).unwrap_or(&self.base)
     }
 }
 
-impl CommandsHandlerConstructor {
+impl RedAlertCommandsHandlerConstructor {
     pub fn build(self) -> Handler<impl Fn(&str, HelpInfo) -> String> {
         let guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>> =
             Arc::new(Default::default());
         let actions_history: Arc<Mutex<ActionsHistory>> = Arc::new(Default::default());
-        let guilds_voice_config = Arc::new(RwLock::new(GuildsVoiceConfig::read()));
+        let guilds_voice_config = Arc::new(RwLock::new(RedAlertGuildsVoiceConfig::read()));
         Handler {
             help_command: HelpCommandConfig {
                 prefix_anchor: "кринж киллер помощь".to_string(),
@@ -139,7 +141,7 @@ impl CommandsHandlerConstructor {
 struct RedAlertOnReady {
     guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
     actions_history: Arc<Mutex<ActionsHistory>>,
-    guilds_voice_config: Arc<RwLock<GuildsVoiceConfig>>,
+    guilds_voice_config: Arc<RwLock<RedAlertGuildsVoiceConfig>>,
     recognition_model: VoskModel,
     listening_text: Option<String>,
     red_alert_handler: Arc<RedAlertHandler>,
@@ -178,7 +180,7 @@ impl RedAlertOnReady {
                     | RecognizerState::RecognitionResult(info, _)
                     | RecognizerState::RecognitionEnd(info) => {
                         let mut prefix_parts: Vec<String> = vec![];
-                        let guild_id = info.inner.guild_id;
+                        let guild_id = info.guild_id;
                         if let Some(guild) = ctx.cache.guild(guild_id) {
                             prefix_parts.push(format!("[G:{}]", guild.name));
                         } else {
@@ -204,8 +206,10 @@ impl RedAlertOnReady {
                             log_prefix, result.result_type, result.text
                         );
                         let guilds_voice_config = guilds_voice_config.read().await;
-                        let voice_config = guilds_voice_config.get(&info.inner.guild_id);
-                        let kick_user_id = voice_config.should_kick(info.user_id, &result.text);
+                        let voice_config = guilds_voice_config.get(&info.guild_id);
+                        let kick_user_id = voice_config
+                            .should_kick(&info.user_id.0, &result.text)
+                            .map(|v| UserId(*v));
                         drop(guilds_voice_config);
                         let Some(kick_user_id) = kick_user_id else {
                             continue;
@@ -226,7 +230,7 @@ impl RedAlertOnReady {
                         let red_alert_handler = red_alert_handler.clone();
                         let ctx = ctx.clone();
                         tokio::spawn(async move {
-                            let guild_id = info.inner.guild_id;
+                            let guild_id = info.guild_id;
                             let deportation_result = red_alert_handler
                                 .single(&ctx, &guild_id, &kick_user_id)
                                 .await;
@@ -763,11 +767,14 @@ impl Command for ActionsHistoryCommand {
 }
 
 struct GuildsVoiceConfigCommand {
-    guilds_voice_config: Arc<RwLock<GuildsVoiceConfig>>,
+    guilds_voice_config: Arc<RwLock<RedAlertGuildsVoiceConfig>>,
 }
 
 impl GuildsVoiceConfigCommand {
-    fn process_self_words(guild_voice_config: &mut VoiceConfig, args: Vec<String>) -> String {
+    fn process_self_words(
+        guild_voice_config: &mut RedAlertVoiceConfig<u64>,
+        args: Vec<String>,
+    ) -> String {
         let word = args.join(" ");
         if let Some(index) = guild_voice_config
             .self_words
@@ -781,7 +788,10 @@ impl GuildsVoiceConfigCommand {
             format!("ЗАПРЕТНАЯ ФРАЗА ДОБАВЛЕНА!")
         }
     }
-    fn process_target_words(guild_voice_config: &mut VoiceConfig, args: Vec<String>) -> String {
+    fn process_target_words(
+        guild_voice_config: &mut RedAlertVoiceConfig<u64>,
+        args: Vec<String>,
+    ) -> String {
         let word = args.join(" ");
         if let Some(index) = guild_voice_config
             .target_words
@@ -795,7 +805,10 @@ impl GuildsVoiceConfigCommand {
             format!("ВЫГОНЯЮЩАЯ ФРАЗА ДОБАВЛЕНА!")
         }
     }
-    fn process_aliases(guild_voice_config: &mut VoiceConfig, mut args: Vec<String>) -> String {
+    fn process_aliases(
+        guild_voice_config: &mut RedAlertVoiceConfig<u64>,
+        mut args: Vec<String>,
+    ) -> String {
         if !(args.len() > 1) {
             return format!("МАЛО ПАРАМЕТРОВ!");
         }
@@ -822,7 +835,7 @@ impl GuildsVoiceConfigCommand {
         }
     }
     fn process_similarity_threshold(
-        guild_voice_config: &mut VoiceConfig,
+        guild_voice_config: &mut RedAlertVoiceConfig<u64>,
         mut args: Vec<String>,
     ) -> String {
         if !(args.len() > 0) {
@@ -839,7 +852,7 @@ impl GuildsVoiceConfigCommand {
             similarity_threshold
         )
     }
-    fn format(guild_voice_config: &VoiceConfig) -> String {
+    fn format(guild_voice_config: &RedAlertVoiceConfig<u64>) -> String {
         format!(
             "Запретные:\n{}Выгоняющие:\n{}Псевдонимы:\n{}Погрешность: {}",
             guild_voice_config

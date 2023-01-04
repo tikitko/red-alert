@@ -1,18 +1,21 @@
 use ngrammatic::CorpusBuilder;
 use serde::{Deserialize, Serialize};
-use serenity::model::prelude::UserId;
 use std::collections::HashMap;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct VoiceConfig {
+pub struct RedAlertVoiceConfig<ID> {
     pub target_words: Vec<String>,
     pub self_words: Vec<String>,
-    pub aliases: HashMap<String, u64>,
+    pub aliases: HashMap<String, ID>,
     pub similarity_threshold: f32,
 }
 
-impl VoiceConfig {
-    pub fn should_kick(&self, author_user_id: UserId, text: &String) -> Option<UserId> {
+impl<ID> RedAlertVoiceConfig<ID> {
+    pub fn should_kick<'a, 'm: 'a>(
+        &'m self,
+        author_user_id: &'a ID,
+        text: &String,
+    ) -> Option<&'a ID> {
         let similarity_threshold = self.similarity_threshold.min(1.0).max(0.0);
         let mut corpus = CorpusBuilder::new().finish();
         let text_words = text.split_ascii_whitespace();
@@ -67,7 +70,7 @@ impl VoiceConfig {
                 if !check_text_contains(name) {
                     continue;
                 }
-                return Some(UserId(*user_id));
+                return Some(user_id);
             }
         }
         None

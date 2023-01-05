@@ -7,6 +7,7 @@ VOSK Models: https://alphacephei.com/vosk/models
 Red Alert Main Configuration `config.yaml`:
 ```yaml
 discord_token: "DISCORD_TOKEN"
+lang_id: "ru_RU"
 listening_text: "красную тревогу..."
 vosk_model_path: "vosk-model-small-ru-0.22"
 vosk_log_level: -1

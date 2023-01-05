@@ -26,6 +26,7 @@ pub struct RedAlertCommandsHandlerConstructor {
     pub recognition_model: VoskModel,
     pub listening_text: Option<String>,
     pub red_alert_handler: Arc<RedAlertHandler>,
+    pub l10n: L10n,
 }
 
 enum ActionType {

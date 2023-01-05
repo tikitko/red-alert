@@ -33,6 +33,12 @@ async fn main() {
         .get_string("discord_token")
         .expect("Expected a token in the config!");
 
+    let lang_id_string = settings
+        .get_string("lang_id")
+        .expect("Expected a lang id in the config!");
+
+    let l10n = components::L10n::load(&lang_id_string);
+
     let listening_text = settings.get_string("listening_text").ok();
 
     let vosk_model_path = settings
@@ -52,6 +58,7 @@ async fn main() {
                     .expect("Incorrect recognition model!"),
                 listening_text,
                 red_alert_handler: Arc::new(red_alert::RedAlertHandler),
+                l10n,
             }
             .build(),
         )

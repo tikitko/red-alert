@@ -9,6 +9,7 @@ use super::super::components::*;
 use super::*;
 use actions_history_command::*;
 use chrono::{offset, DateTime, Utc};
+use fluent::fluent_args;
 use guilds_voice_config_command::*;
 use on_ready::*;
 use serde::{Deserialize, Serialize};
@@ -94,24 +95,45 @@ impl RedAlertGuildsVoiceConfig {
 }
 
 impl RedAlertCommandsHandlerConstructor {
-    pub fn build(self) -> Handler<impl Fn(&str, HelpInfo) -> String> {
+    pub fn build(self) -> Handler<impl Fn(String, HelpInfo) -> String> {
         let guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>> =
             Arc::new(Default::default());
         let actions_history: Arc<Mutex<ActionsHistory>> = Arc::new(Default::default());
         let guilds_voice_config = Arc::new(RwLock::new(RedAlertGuildsVoiceConfig::read()));
+        let l10n = self.l10n.clone();
         Handler {
             help_command: HelpCommandConfig {
-                prefix_anchor: "кринж киллер помощь".to_string(),
+                prefix_anchor: self
+                    .l10n
+                    .string("help-command-prefix-anchor", fluent_args![]),
                 output_prefix: None,
-                output_format_fn: |prefix_anchor, help_info| {
-                    format!(
-                        "> **`{}`**\n```{}```\n",
-                        help_info
-                            .header_suffix
-                            .map(|header_suffix| format!("{} {}", prefix_anchor, header_suffix))
-                            .unwrap_or(prefix_anchor.to_string()),
-                        help_info.description
-                    )
+                output_format_fn: move |prefix_anchor, help_info| {
+                    vec![
+                        if let Some(header_suffix) = help_info.header_suffix {
+                            l10n.string(
+                                "help-command-full-header",
+                                fluent_args![
+                                    "header" => prefix_anchor,
+                                    "suffix" => header_suffix
+                                ],
+                            )
+                        } else {
+                            l10n.string(
+                                "help-command-short-header",
+                                fluent_args![
+                                    "header" => prefix_anchor
+                                ],
+                            )
+                        },
+                        l10n.string(
+                            "help-command-body",
+                            fluent_args![
+                                "body" => help_info.description
+                            ],
+                        ),
+                    ]
+                    .join(NEW_LINE)
+                        + NEW_LINE
                 },
             },
             on_ready: Box::new(RedAlertOnReady {
@@ -127,6 +149,7 @@ impl RedAlertCommandsHandlerConstructor {
                 Box::new(TextRedAlertCommand {
                     red_alert_handler: self.red_alert_handler.clone(),
                     actions_history: actions_history.clone(),
+                    l10n: self.l10n.clone(),
                 }),
                 Box::new(StartListenRedAlertCommand {
                     guilds_voices_receivers: guilds_voices_receivers.clone(),

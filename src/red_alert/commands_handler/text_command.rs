@@ -10,6 +10,7 @@ use tokio::sync::Mutex;
 pub(super) struct TextRedAlertCommand {
     pub(super) actions_history: Arc<Mutex<ActionsHistory>>,
     pub(super) red_alert_handler: Arc<RedAlertHandler>,
+    pub(super) l10n: L10n,
 }
 
 enum CommonRedAlertResult {
@@ -99,17 +100,22 @@ async fn common_red_alert(
 
 #[async_trait]
 impl Command for TextRedAlertCommand {
-    fn prefix_anchor(&self) -> &str {
-        "код красный"
+    fn prefix_anchor(&self) -> String {
+        self.l10n
+            .string("red-alert-command-prefix-anchor", fluent_args![])
     }
-    fn help_info<'a>(&'a self) -> Option<HelpInfo<'a>> {
+    fn help_info(&self) -> Option<HelpInfo> {
         Some(HelpInfo {
-            header_suffix: Some("{ID или упоминание пользователя}*"),
-            description:
-                "* - может быть несколько (через пробел).\nКикает выбранного пользователя из голосового канала если он в нем находится, иначе, кикает исполнителя команды.",
+            header_suffix: Some(
+                self.l10n
+                    .string("red-alert-command-header-suffix", fluent_args![]),
+            ),
+            description: self
+                .l10n
+                .string("red-alert-command-help-description", fluent_args![]),
         })
     }
-    async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
+    async fn process<'a>(&'a self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
             return;
         };
@@ -146,9 +152,18 @@ impl Command for TextRedAlertCommand {
                     },
                 );
                 match auto_self_kick_result {
-                    RedAlertDeportationResult::Deported => format!("ВИЖУ ТЫ ЗАБЫЛ УКАЗАТЬ ЦЕЛЬ ДЛЯ КРАСНОГО КОДА, НИЧЕГО... ШМАЛЬНЕМ В ТЕБЯ! (ИСПОЛЬЗУЙ ТЕГИ) ПРИНЯТО К ИСПОЛНЕНИЮ!"),
-                    RedAlertDeportationResult::NotFound => format!(":face_with_monocle: ПОЛЬЗУЙСЯ ТЕГАМИ, И ЛУЧШЕ НЕ ЗАХОДИ В КАНАЛ, А ТО КИКНУ С ТАКИМИ ПРИКОЛАМИ! Пшшшш..."),
-                    RedAlertDeportationResult::Error(_) => format!("СЛОМАЛСЯ ПОКА ПЫТАЛСЯ ТЕБЯ КИКНУТЬ ЧТО НЕПРАВИЛЬНОЕ ИСПОЛЬЗОВАНИЕ, КАК ВСЕГДА КОД ГОВНА! ОТМЕНА! Пшшшш...")
+                    RedAlertDeportationResult::Deported => self
+                        .l10n
+                        .string("red-alert-command-empty-self-success", fluent_args![]),
+                    RedAlertDeportationResult::NotFound => self
+                        .l10n
+                        .string("red-alert-command-empty-self-not-found", fluent_args![]),
+                    RedAlertDeportationResult::Error(error) => self.l10n.string(
+                        "red-alert-command-empty-self-error",
+                        fluent_args![
+                            "error" => error.to_string()
+                        ],
+                    ),
                 }
             }
             CommonRedAlertResult::SingleSuccess { is_self_kick } => {
@@ -161,10 +176,15 @@ impl Command for TextRedAlertCommand {
                     },
                 );
                 if is_self_kick {
-                    format!("КОД КРАСНЫЙ ПОДТВЕРЖДЕН! САМОВЫПИЛ ДЕЛО ДОСТОЙНОЕ!!! 0)00))00")
+                    self.l10n
+                        .string("red-alert-command-single-self-success", fluent_args![])
                 } else {
-                    let user_name = target_users_ids[0].mention();
-                    format!("КОД КРАСНЫЙ ПОДТВЕРЖДЕН! АНТИКРИНЖ ОРУЖИЕ ИСПОЛЬЗОВАНО ПРОТИВ {user_name}!!! 0)00))00")
+                    self.l10n.string(
+                        "red-alert-command-single-target-success",
+                        fluent_args![
+                            "user-name" => target_users_ids[0].mention().to_string()
+                        ],
+                    )
                 }
             }
             CommonRedAlertResult::SingleNotFound {
@@ -189,16 +209,28 @@ impl Command for TextRedAlertCommand {
                         },
                     );
                     match self_kick_result {
-                        RedAlertDeportationResult::Deported => format!("В КАНАЛЕ НЕТ ЧЕЛА ДЛЯ КОДА КРАСНОГО, ЗНАЧИТ У ТЕБЯ БЕДЫ С БОШКОЙ, КОД КРАСНЫЙ НА ТЕБЯ!"),
-                        RedAlertDeportationResult::NotFound => format!("ДОФИГА УМНЫЙ ВИЖУ? В КАНАЛЕ НЕТ ЧЕЛА ДЛЯ КОДА КРАСНОГО, ЖАЛЬ ТЕБЯ В КАНАЛЕ НЕТУ, ТАК БЫ ТЕБЯ ШМАЛЬНУЛ КОДОМ КРАСНЫМ! ОТМЕНА! Пшшшш..."),
-                        RedAlertDeportationResult::Error(_) => format!("ХОТЕЛ ШМАЛЬНУТЬ В ТЕБЯ ЗА ТО ЧТО ТЫ ПЫТАЛСЯ КИКНУТЬ ТОГО КОГО НЕТ, НО Я СЛОМАЛСЯ! Пшшшш...")
+                        RedAlertDeportationResult::Deported => self.l10n.string(
+                            "red-alert-command-single-not-found-self-success",
+                            fluent_args![],
+                        ),
+                        RedAlertDeportationResult::NotFound => self.l10n.string(
+                            "red-alert-command-single-not-found-self-not-found",
+                            fluent_args![],
+                        ),
+                        RedAlertDeportationResult::Error(error) => self.l10n.string(
+                            "red-alert-command-single-not-found-self-error",
+                            fluent_args![
+                                "error" => error.to_string()
+                            ],
+                        ),
                     }
                 } else {
-                    format!("СУИЦИД ЭТО ПЛОХО ТАК ЧТО НЕТ))) (У меня просто не получилось)")
+                    self.l10n
+                        .string("red-alert-command-single-not-found-self", fluent_args![])
                 }
             }
             CommonRedAlertResult::SingleError {
-                error: _,
+                error,
                 is_self_kick_try,
             } => {
                 self.actions_history.lock().await.log_history(
@@ -210,9 +242,19 @@ impl Command for TextRedAlertCommand {
                     },
                 );
                 if is_self_kick_try {
-                    format!("АУЧ, МАСЛИНУ ПОЙМАЛ, НЕ СМОГ ОРГАНИЗОВАТЬ ТЕБЕ СУИЦИД0))")
+                    self.l10n.string(
+                        "red-alert-command-single-self-error",
+                        fluent_args![
+                            "error" => error.to_string()
+                        ],
+                    )
                 } else {
-                    format!("АУЧ, МАСЛИНУ ПОЙМАЛ, ОШИБКА В СИСТЕМЕё0))")
+                    self.l10n.string(
+                        "red-alert-command-single-target-error",
+                        fluent_args![
+                            "error" => error.to_string()
+                        ],
+                    )
                 }
             }
             CommonRedAlertResult::Mass {
@@ -240,27 +282,50 @@ impl Command for TextRedAlertCommand {
                         },
                     );
                     match auto_self_kick_result {
-                        RedAlertDeportationResult::Deported => format!("МАССОВЫЙ КОД КРАСНЫЙ ШТУКА ОПАСНАЯ, ТАК КАК ПО РАЗНЫМ ПРИЧИНАМ Я НИКОГО НЕ КИКНУЛ, КИКНУ ТЕБЯ )В)В)))0"),
-                        RedAlertDeportationResult::NotFound => format!("ЖАЛЬ ТЕБЯ НЕ МОГУ ПРШИТЬ ЗА ЛОЖНЫЙ КОД КРАСНЫЙ! ОТМЕНА Пшшшш..."),
-                        RedAlertDeportationResult::Error(_) => format!("ХОТЕЛ ШМАЛЬНУТЬ В ТЕБЯ ЗА ЛОЖНЫЙ КОД КРАСНЫЙ, НО САМ ОБО****СЯ! Пшшшш...")
+                        RedAlertDeportationResult::Deported => self
+                            .l10n
+                            .string("red-alert-command-mass-self-success", fluent_args![]),
+                        RedAlertDeportationResult::NotFound => self
+                            .l10n
+                            .string("red-alert-command-mass-self-not-found", fluent_args![]),
+                        RedAlertDeportationResult::Error(error) => self.l10n.string(
+                            "red-alert-command-mass-self-error",
+                            fluent_args![
+                                "error" => error.to_string()
+                            ],
+                        ),
                     }
                 } else {
                     let mut result_strings = Vec::new();
+                    result_strings.push(
+                        self.l10n
+                            .string("red-alert-command-mass-records-header", fluent_args![]),
+                    );
                     for index in 0..results.len() {
-                        let deport_status = &results[index];
-                        let user_name = target_users_ids[index].mention();
-                        let deport_status = match deport_status {
-                            RedAlertDeportationResult::Deported => "ИСПОЛНЕНО",
-                            RedAlertDeportationResult::NotFound => "НЕ В КАНАЛЕ",
-                            RedAlertDeportationResult::Error(_) => "ОШИБКА (ПРОЧНЫЙ СУ*А)",
+                        let deport_status = match &results[index] {
+                            RedAlertDeportationResult::Deported => self
+                                .l10n
+                                .string("red-alert-command-mass-success-status", fluent_args![]),
+                            RedAlertDeportationResult::NotFound => self
+                                .l10n
+                                .string("red-alert-command-mass-not-found-status", fluent_args![]),
+                            RedAlertDeportationResult::Error(error) => self.l10n.string(
+                                "red-alert-command-mass-error-status",
+                                fluent_args![
+                                    "error" => error.to_string()
+                                ],
+                            ),
                         };
-                        let record_number = index + 1;
-                        result_strings.push(format!(
-                            " {record_number}. {user_name} СТАТУС: {deport_status}."
+                        result_strings.push(self.l10n.string(
+                            "red-alert-command-mass-record",
+                            fluent_args![
+                                "record-number" => index + 1,
+                                "user-name" => target_users_ids[index].mention().to_string(),
+                                "deport-status" => deport_status
+                            ],
                         ))
                     }
-                    let result_string = result_strings.join("\n");
-                    format!("ОУ, МАССОВЫЙ КОД КРАСНЫЙ? СТАТУС ВЫКОСА КРИНЖОВИКОВ:\n{result_string}")
+                    result_strings.join(NEW_LINE)
                 }
             }
         };

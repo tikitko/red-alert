@@ -1,3 +1,4 @@
+use super::*;
 use ngrammatic::CorpusBuilder;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -50,7 +51,7 @@ impl<ID> RedAlertVoiceConfig<ID> {
             }
             let total_similarity = total_similarity_sum / (real_query_words.len() as f32);
             if total_similarity >= similarity_threshold {
-                let real_query = real_query_words.join(" ");
+                let real_query = real_query_words.join(SPACE);
                 text.contains(&real_query)
             } else {
                 false

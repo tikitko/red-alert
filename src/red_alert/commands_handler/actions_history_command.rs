@@ -8,16 +8,17 @@ pub(super) struct ActionsHistoryRedAlertCommand {
 
 #[async_trait]
 impl Command for ActionsHistoryRedAlertCommand {
-    fn prefix_anchor(&self) -> &str {
-        "код красный история"
+    fn prefix_anchor(&self) -> String {
+        "код красный история".to_string()
     }
-    fn help_info<'a>(&'a self) -> Option<HelpInfo<'a>> {
+    fn help_info(&self) -> Option<HelpInfo> {
         Some(HelpInfo {
             header_suffix: None,
-            description: "Выводит историю всех наказаний которые исполнил КРИНЖ КИЛЛЕР.",
+            description: "Выводит историю всех наказаний которые исполнил КРИНЖ КИЛЛЕР."
+                .to_string(),
         })
     }
-    async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
+    async fn process<'a>(&'a self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
             return;
         };
@@ -78,7 +79,7 @@ impl Command for ActionsHistoryRedAlertCommand {
                 let record_number = action_info_index + 1;
                 result_strings.push(format!(" {record_number}. [ВРЕМЯ: {time}] {info_string}."));
             }
-            let result_string = result_strings.join("\n");
+            let result_string = result_strings.join(NEW_LINE);
             format!("ИСТОРИЯ ВЫКОСА КРИНЖОВИКОВ:\n{result_string}")
         } else {
             format!("ПОКА ЕЩЕ НИКОГО НЕ УШАТАЛ НА ЭТОМ СЕРВЕР)!1!))")

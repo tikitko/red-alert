@@ -15,7 +15,7 @@ impl GuildsVoiceConfigRedAlertCommand {
         guild_voice_config: &mut RedAlertVoiceConfig<u64>,
         args: Vec<String>,
     ) -> String {
-        let word = args.join(" ");
+        let word = args.join(SPACE);
         if let Some(index) = guild_voice_config
             .self_words
             .iter()
@@ -62,7 +62,7 @@ impl GuildsVoiceConfigRedAlertCommand {
         }) else {
             return format!("НЕВЕРНЫЙ ПОЛЬЗОВАТЕЛЬ!")
         };
-        let word = args.join(" ");
+        let word = args.join(SPACE);
         let Some(saved_user_id) = guild_voice_config.aliases.remove(&word) else {
             guild_voice_config.aliases.insert(word, user_id.0);
             return format!("ДОБАВЛЕН ПСЕВДОНИМ ДЛЯ {}!", user_id.mention())
@@ -94,22 +94,25 @@ impl GuildsVoiceConfigRedAlertCommand {
     }
     fn format(guild_voice_config: &RedAlertVoiceConfig<u64>) -> String {
         format!(
-            "Запретные:\n{}Выгоняющие:\n{}Псевдонимы:\n{}Погрешность: {}",
+            "Запретные:\n{}\nВыгоняющие:\n{}\nПсевдонимы:\n{}\nПогрешность: {}",
             guild_voice_config
                 .self_words
                 .iter()
-                .map(|a| format!(" - {}\n", a))
-                .collect::<String>(),
+                .map(|a| format!(" - {}", a))
+                .collect::<Vec<String>>()
+                .join(NEW_LINE),
             guild_voice_config
                 .target_words
                 .iter()
-                .map(|a| format!(" - {}\n", a))
-                .collect::<String>(),
+                .map(|a| format!(" - {}", a))
+                .collect::<Vec<String>>()
+                .join(NEW_LINE),
             guild_voice_config
                 .aliases
                 .iter()
-                .map(|a| format!(" - {}: {}\n", a.0, UserId(*a.1).mention()))
-                .collect::<String>(),
+                .map(|a| format!(" - {}: {}", a.0, UserId(*a.1).mention()))
+                .collect::<Vec<String>>()
+                .join(NEW_LINE),
             guild_voice_config.similarity_threshold,
         )
     }
@@ -117,17 +120,17 @@ impl GuildsVoiceConfigRedAlertCommand {
 
 #[async_trait]
 impl Command for GuildsVoiceConfigRedAlertCommand {
-    fn prefix_anchor(&self) -> &str {
-        "код красный фраза"
+    fn prefix_anchor(&self) -> String {
+        "код красный фраза".to_string()
     }
-    fn help_info<'a>(&'a self) -> Option<HelpInfo<'a>> {
+    fn help_info(&self) -> Option<HelpInfo> {
         Some(HelpInfo {
-            header_suffix: Some("[запретная/выгоняющая/псевдоним/погрешность/список]"),
+            header_suffix: Some("[запретная/выгоняющая/псевдоним/погрешность/список]".to_string()),
             description:
-                "[запретная] {фраза} - добавляет/удаляет фразу при призношении которой пользователь будет исключен.\n[выгоняющая] {фраза} - добавляет/удаляет фразу при призношении которой пользователь может исключить другого пользователя.\n[псевдоним] {фраза} {ID или упоминание пользователя} - добавляет/удаляет псевдоним для пользователя который можно использовать в распознавателе речи.\n[погрешность] {0.0 - 1.0} - устанавливает погрешность разпознавания речи.\n[список] - список всех фраз.",
+                "[запретная] {фраза} - добавляет/удаляет фразу при призношении которой пользователь будет исключен.\n[выгоняющая] {фраза} - добавляет/удаляет фразу при призношении которой пользователь может исключить другого пользователя.\n[псевдоним] {фраза} {ID или упоминание пользователя} - добавляет/удаляет псевдоним для пользователя который можно использовать в распознавателе речи.\n[погрешность] {0.0 - 1.0} - устанавливает погрешность разпознавания речи.\n[список] - список всех фраз.".to_string(),
         })
     }
-    async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
+    async fn process<'a>(&'a self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
             return;
         };

@@ -36,17 +36,17 @@ async fn stop_listen(
 
 #[async_trait]
 impl Command for StopListenRedAlertCommand {
-    fn prefix_anchor(&self) -> &str {
-        "прекратить слушать код красный"
+    fn prefix_anchor(&self) -> String {
+        "прекратить слушать код красный".to_string()
     }
-    fn help_info<'a>(&'a self) -> Option<HelpInfo<'a>> {
+    fn help_info(&self) -> Option<HelpInfo> {
         Some(HelpInfo {
             header_suffix: None,
             description:
-                "Прекратить слушать голосовой канал в котором находится КРИНЖ КИЛЛЕР на запрещенные и направленные фразы.",
+                "Прекратить слушать голосовой канал в котором находится КРИНЖ КИЛЛЕР на запрещенные и направленные фразы.".to_string(),
         })
     }
-    async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
+    async fn process<'a>(&'a self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
             return;
         };

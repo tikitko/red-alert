@@ -41,17 +41,18 @@ async fn start_listen(
 
 #[async_trait]
 impl Command for StartListenRedAlertCommand {
-    fn prefix_anchor(&self) -> &str {
-        "слушать код красный"
+    fn prefix_anchor(&self) -> String {
+        "слушать код красный".to_string()
     }
-    fn help_info<'a>(&'a self) -> Option<HelpInfo<'a>> {
+    fn help_info(&self) -> Option<HelpInfo> {
         Some(HelpInfo {
-            header_suffix: Some("{ID или упоминание канала}"),
+            header_suffix: Some("{ID или упоминание канала}".to_string()),
             description:
-                "Начать слушать выбранный голосовой канал на запрещенные и направленные фразы.",
+                "Начать слушать выбранный голосовой канал на запрещенные и направленные фразы."
+                    .to_string(),
         })
     }
-    async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
+    async fn process<'a>(&'a self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
             return;
         };

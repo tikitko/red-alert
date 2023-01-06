@@ -1,5 +1,6 @@
 mod actions_history_command;
 mod guilds_voice_config_command;
+mod help_command_factory;
 mod on_ready;
 mod start_listen_command;
 mod stop_listen_command;
@@ -9,7 +10,9 @@ use super::super::components::*;
 use super::*;
 use actions_history_command::*;
 use chrono::{offset, DateTime, Utc};
+use fluent::fluent_args;
 use guilds_voice_config_command::*;
+use help_command_factory::*;
 use on_ready::*;
 use serde::{Deserialize, Serialize};
 use serenity::model::id::GuildId;
@@ -26,6 +29,7 @@ pub struct RedAlertCommandsHandlerConstructor {
     pub recognition_model: VoskModel,
     pub listening_text: Option<String>,
     pub red_alert_handler: Arc<RedAlertHandler>,
+    pub l10n: L10n,
 }
 
 enum ActionType {
@@ -93,26 +97,15 @@ impl RedAlertGuildsVoiceConfig {
 }
 
 impl RedAlertCommandsHandlerConstructor {
-    pub fn build(self) -> Handler<impl Fn(&str, HelpInfo) -> String> {
+    pub fn build(self) -> Handler {
         let guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>> =
             Arc::new(Default::default());
         let actions_history: Arc<Mutex<ActionsHistory>> = Arc::new(Default::default());
         let guilds_voice_config = Arc::new(RwLock::new(RedAlertGuildsVoiceConfig::read()));
         Handler {
-            help_command: HelpCommandConfig {
-                prefix_anchor: "кринж киллер помощь".to_string(),
-                output_prefix: None,
-                output_format_fn: |prefix_anchor, help_info| {
-                    format!(
-                        "> **`{}`**\n```{}```\n",
-                        help_info
-                            .header_suffix
-                            .map(|header_suffix| format!("{} {}", prefix_anchor, header_suffix))
-                            .unwrap_or(prefix_anchor.to_string()),
-                        help_info.description
-                    )
-                },
-            },
+            help_command_factory: Box::new(RedAlertHelpCommandFactory {
+                l10n: self.l10n.clone(),
+            }),
             on_ready: Box::new(RedAlertOnReady {
                 guilds_voices_receivers: guilds_voices_receivers.clone(),
                 actions_history: actions_history.clone(),
@@ -126,18 +119,23 @@ impl RedAlertCommandsHandlerConstructor {
                 Box::new(TextRedAlertCommand {
                     red_alert_handler: self.red_alert_handler.clone(),
                     actions_history: actions_history.clone(),
+                    l10n: self.l10n.clone(),
                 }),
                 Box::new(StartListenRedAlertCommand {
                     guilds_voices_receivers: guilds_voices_receivers.clone(),
+                    l10n: self.l10n.clone(),
                 }),
                 Box::new(StopListenRedAlertCommand {
                     guilds_voices_receivers: guilds_voices_receivers.clone(),
+                    l10n: self.l10n.clone(),
                 }),
                 Box::new(ActionsHistoryRedAlertCommand {
                     actions_history: actions_history.clone(),
+                    l10n: self.l10n.clone(),
                 }),
                 Box::new(GuildsVoiceConfigRedAlertCommand {
                     guilds_voice_config: guilds_voice_config.clone(),
+                    l10n: self.l10n.clone(),
                 }),
             ],
         }

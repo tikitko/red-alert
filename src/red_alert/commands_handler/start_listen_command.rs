@@ -11,6 +11,7 @@ use tokio::sync::RwLock;
 
 pub(super) struct StartListenRedAlertCommand {
     pub(super) guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
+    pub(super) l10n: L10n,
 }
 
 enum StartListenError {
@@ -41,17 +42,25 @@ async fn start_listen(
 
 #[async_trait]
 impl Command for StartListenRedAlertCommand {
-    fn prefix_anchor(&self) -> &str {
-        "слушать код красный"
+    fn prefix_anchor(&self) -> String {
+        self.l10n.string(
+            "start-listen-red-alert-command-prefix-anchor",
+            fluent_args![],
+        )
     }
-    fn help_info<'a>(&'a self) -> Option<HelpInfo<'a>> {
+    fn help_info(&self) -> Option<HelpInfo> {
         Some(HelpInfo {
-            header_suffix: Some("{ID или упоминание канала}"),
-            description:
-                "Начать слушать выбранный голосовой канал на запрещенные и направленные фразы.",
+            header_suffix: Some(self.l10n.string(
+                "start-listen-red-alert-command-header-suffix",
+                fluent_args![],
+            )),
+            description: self.l10n.string(
+                "start-listen-red-alert-command-help-description",
+                fluent_args![],
+            ),
         })
     }
-    async fn process<'a>(&self, ctx: Context, params: CommandParams<'a>) {
+    async fn process<'a>(&'a self, ctx: Context, params: CommandParams<'a>) {
         let Some(guild_id) = params.guild_id else {
             return;
         };
@@ -67,24 +76,41 @@ impl Command for StartListenRedAlertCommand {
             })
             .flatten();
         let answer_msg = if let Some(channel_id) = channel_id {
-            let channel_name = channel_id.mention();
-            match start_listen(self.guilds_voices_receivers.clone(), &ctx, guild_id, channel_id)
-                .await
+            let channel_name = channel_id.mention().to_string();
+            match start_listen(
+                self.guilds_voices_receivers.clone(),
+                &ctx,
+                guild_id,
+                channel_id,
+            )
+            .await
             {
-                Ok(_) => {
-                    format!("ОТСЛЕЖИВАЮ КОД КРАСНЫЙ В КАНАЛЕ {channel_name}...")
-                },
+                Ok(_) => self.l10n.string(
+                    "start-listen-red-alert-command-success",
+                    fluent_args![
+                        "channel-name" => channel_name
+                    ],
+                ),
                 Err(error) => match error {
-                    StartListenError::ConnectingError => format!(
-                        "ОШИБКА СЛЕЖКИ ЗА КАНАЛОМ {channel_name}. НЕ ПОЛУЧАЕТСЯ ВОЙТИ В КАНАЛ..."
+                    StartListenError::ConnectingError => self.l10n.string(
+                        "start-listen-red-alert-command-connect-error",
+                        fluent_args![
+                            "channel-name" => channel_name
+                        ],
                     ),
-                    StartListenError::SongbirdMissing => format!(
-                        "ОШИБКА СЛЕЖКИ ЗА КАНАЛОМ {channel_name}. ЗВУКОВАЯ БИБЛИОТЕКА ОТСУТСТВУЕТ..."
+                    StartListenError::SongbirdMissing => self.l10n.string(
+                        "start-listen-red-alert-command-lib-error",
+                        fluent_args![
+                            "channel-name" => channel_name
+                        ],
                     ),
                 },
             }
         } else {
-            format!("ЧТО ОТСЛЕЖИВАТЬ НАРКОМАН?")
+            self.l10n.string(
+                "start-listen-red-alert-command-missed-channel",
+                fluent_args![],
+            )
         };
         let _ = params.channel_id.say(&ctx, answer_msg).await;
     }

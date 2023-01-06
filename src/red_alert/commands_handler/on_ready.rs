@@ -37,7 +37,7 @@ impl RedAlertOnReady {
                 voices_queue: GuildsVoicesReceivers(guilds_voices_receivers),
             }
             .start();
-            let mut session_kicked: HashSet<UserId> = HashSet::new();
+            let mut autors_processed_kicks: HashMap<UserId, HashSet<UserId>> = HashMap::new();
             loop {
                 let Some(recognizer_state) = tokio::select! {
                     recognizer_state = recognizer_signal.recv() => recognizer_state,
@@ -45,7 +45,6 @@ impl RedAlertOnReady {
                 } else {
                     break;
                 };
-
                 let log_prefix = match recognizer_state {
                     RecognizerState::RecognitionStart(info)
                     | RecognizerState::RecognitionResult(info, _)
@@ -77,56 +76,63 @@ impl RedAlertOnReady {
                             log_prefix, result.result_type, result.text
                         );
                         let guilds_voice_config = guilds_voice_config.read().await;
-                        let voice_config = guilds_voice_config.get(&info.guild_id);
-                        let kick_user_id = voice_config
+                        let mut kick_users_ids = guilds_voice_config
+                            .get(&info.guild_id)
                             .should_kick(&info.user_id.0, &result.text)
-                            .map(|v| UserId(*v));
+                            .into_iter()
+                            .map(|v| UserId(*v))
+                            .collect::<HashSet<UserId>>();
                         drop(guilds_voice_config);
-                        let Some(kick_user_id) = kick_user_id else {
+                        if let Some(mut autor_processed_kicks) =
+                            autors_processed_kicks.remove(&info.user_id)
+                        {
+                            kick_users_ids = &kick_users_ids - &autor_processed_kicks;
+                            autor_processed_kicks.extend(kick_users_ids.clone());
+                            autors_processed_kicks.insert(info.user_id, autor_processed_kicks);
+                        } else {
+                            autors_processed_kicks.insert(info.user_id, kick_users_ids.clone());
+                        }
+                        if kick_users_ids.is_empty() {
                             continue;
                         };
-                        if session_kicked.contains(&kick_user_id) {
-                            info!(
-                                "{} Recognition RESULT skipped. User already kicked.",
-                                log_prefix
-                            );
-                            continue;
-                        }
                         info!(
                             "{} Recognition RESULT will be used for kick. Have restrictions.",
                             log_prefix
                         );
-                        session_kicked.insert(kick_user_id);
-                        let actions_history = actions_history.clone();
-                        let red_alert_handler = red_alert_handler.clone();
-                        let ctx = ctx.clone();
-                        tokio::spawn(async move {
-                            let guild_id = info.guild_id;
-                            let deportation_result = red_alert_handler
-                                .single(&ctx, &guild_id, &kick_user_id)
-                                .await;
-                            info!(
-                                "{} Recognition RESULT used for kick, status is {:?}.",
-                                log_prefix, deportation_result
-                            );
-                            actions_history.lock().await.log_history(
-                                guild_id,
-                                ActionType::VoiceRedAlert {
-                                    author_id: info.user_id,
-                                    target_id: kick_user_id,
-                                    reason: result.text,
-                                    is_success: deportation_result.is_deported(),
-                                },
-                            );
-                        });
+                        for kick_user_id in kick_users_ids {
+                            let actions_history = actions_history.clone();
+                            let red_alert_handler = red_alert_handler.clone();
+                            let ctx = ctx.clone();
+                            let log_prefix = log_prefix.clone();
+                            let result_text = result.text.clone();
+                            tokio::spawn(async move {
+                                let guild_id = info.guild_id;
+                                let deportation_result = red_alert_handler
+                                    .single(&ctx, &guild_id, &kick_user_id)
+                                    .await;
+                                info!(
+                                    "{} Recognition RESULT used for kick, status is {:?}.",
+                                    log_prefix, deportation_result
+                                );
+                                actions_history.lock().await.log_history(
+                                    guild_id,
+                                    ActionType::VoiceRedAlert {
+                                        author_id: info.user_id,
+                                        target_id: kick_user_id,
+                                        reason: result_text,
+                                        is_success: deportation_result.is_deported(),
+                                    },
+                                );
+                            });
+                        }
                     }
                     RecognizerState::RecognitionStart(info) => {
                         info!("{} Recognition STARTED.", log_prefix);
-                        session_kicked.remove(&info.user_id);
+                        autors_processed_kicks.remove(&info.user_id);
                     }
                     RecognizerState::RecognitionEnd(info) => {
                         info!("{} Recognition ENDED.", log_prefix);
-                        session_kicked.remove(&info.user_id);
+                        autors_processed_kicks.remove(&info.user_id);
                     }
                 }
             }

@@ -1,21 +1,23 @@
+use super::*;
 use ngrammatic::CorpusBuilder;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::hash::Hash;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RedAlertVoiceConfig<ID> {
+pub struct RedAlertVoiceConfig<ID: Eq + Hash> {
     pub target_words: Vec<String>,
     pub self_words: Vec<String>,
     pub aliases: HashMap<String, ID>,
     pub similarity_threshold: f32,
 }
 
-impl<ID> RedAlertVoiceConfig<ID> {
+impl<ID: Eq + Hash> RedAlertVoiceConfig<ID> {
     pub fn should_kick<'a, 'm: 'a>(
         &'m self,
         author_user_id: &'a ID,
         text: &String,
-    ) -> Option<&'a ID> {
+    ) -> HashSet<&'a ID> {
         let similarity_threshold = self.similarity_threshold.min(1.0).max(0.0);
         let mut corpus = CorpusBuilder::new().finish();
         let text_words = text.split_ascii_whitespace();
@@ -50,17 +52,19 @@ impl<ID> RedAlertVoiceConfig<ID> {
             }
             let total_similarity = total_similarity_sum / (real_query_words.len() as f32);
             if total_similarity >= similarity_threshold {
-                let real_query = real_query_words.join(" ");
+                let real_query = real_query_words.join(SPACE);
                 text.contains(&real_query)
             } else {
                 false
             }
         };
+        let mut users_ids = HashSet::new();
         for self_word in &self.self_words {
             if !check_text_contains(self_word) {
                 continue;
             }
-            return Some(author_user_id);
+            users_ids.insert(author_user_id);
+            break;
         }
         for target_word in &self.target_words {
             if !check_text_contains(target_word) {
@@ -70,9 +74,9 @@ impl<ID> RedAlertVoiceConfig<ID> {
                 if !check_text_contains(name) {
                     continue;
                 }
-                return Some(user_id);
+                users_ids.insert(user_id);
             }
         }
-        None
+        users_ids
     }
 }

@@ -80,12 +80,12 @@ guilds-voice-config-red-alert-command-similarity-threshold-empty-params = НЕ �
 guilds-voice-config-red-alert-command-similarity-threshold-incorrect-params = НЕПРАВИЛЬНЫЙ ФОРМАТ ПОГРЕШНОСТИ!
 guilds-voice-config-red-alert-command-similarity-threshold-success = ПОГРЕШНОСТЬ ОБНОВЛЕНА НА ЗНАЧЕНИЕ: {$similarity-threshold}!
 guilds-voice-config-red-alert-command-list-template = 
-    Запретные:
+    {"*"}{"*"}Запретные:{"*"}{"*"}
     {$self-words}
-    Выгоняющие:
+    {"*"}{"*"}Выгоняющие:{"*"}{"*"}
     {$target-words}
-    Псевдонимы:
+    {"*"}{"*"}Псевдонимы:{"*"}{"*"}
     {$aliases}
-    Погрешность: {$similarity-threshold}
+    {"*"}{"*"}Погрешность:{"*"}{"*"} {$similarity-threshold}
 guilds-voice-config-red-alert-command-list-record-single = - {$record}
 guilds-voice-config-red-alert-command-list-record-double = - {$record-start}: {$record-end}

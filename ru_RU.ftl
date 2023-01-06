@@ -52,3 +52,40 @@ actions-history-red-alert-command-text-self-record = КРИНЖОВИК {$target
 actions-history-red-alert-command-text-target-record = КРИНЖОВИК {$target-name} {status} КОМАНДОЙ МИРОТВОРЦA {$autor-name}
 actions-history-red-alert-command-record = {$record-number}. [ВРЕМЯ: {$time}] {$record}.
 actions-history-red-alert-command-empty-list = ПОКА ЕЩЕ НИКОГО НЕ УШАТАЛ НА ЭТОМ СЕРВЕР)!1!))
+guilds-voice-config-red-alert-command-prefix-anchor = код красный фраза
+guilds-voice-config-red-alert-command-header-suffix = [запретная/выгоняющая/псевдоним/погрешность/список]
+guilds-voice-config-red-alert-command-help-description =
+    {"["}запретная{"]"} {"{"}фраза{"}"} - добавляет/удаляет фразу при призношении которой пользователь будет исключен.
+    {"["}выгоняющая{"]"} {"{"}фраза{"}"} - добавляет/удаляет фразу при призношении которой пользователь может исключить другого пользователя.
+    {"["}псевдоним{"]"} {"{"}фраза{"}"} {"{"}ID или упоминание пользователя{"}"} - добавляет/удаляет псевдоним для пользователя который можно использовать в распознавателе речи.
+    {"["}погрешность{"]"} {"{"}0.0 - 1.0{"}"} - устанавливает погрешность разпознавания речи.
+    {"["}список{"]"} - список всех фраз.
+guilds-voice-config-red-alert-command-empty-action = НЕ УКАЗАНО ДЕЙСТВИЕ!
+guilds-voice-config-red-alert-command-incorrect-action = НЕТУ ТАКОГО ДЕЙСТВИЯ!
+guilds-voice-config-red-alert-command-self-words-action = запретная
+guilds-voice-config-red-alert-command-target-words-action = выгоняющая
+guilds-voice-config-red-alert-command-aliases-action = псевдоним
+guilds-voice-config-red-alert-command-similarity-threshold-action = погрешность
+guilds-voice-config-red-alert-command-list-action = список
+guilds-voice-config-red-alert-command-self-words-add = ЗАПРЕТНАЯ ФРАЗА ДОБАВЛЕНА!
+guilds-voice-config-red-alert-command-self-words-remove = ЗАПРЕТНАЯ ФРАЗА УДАЛЕНА!
+guilds-voice-config-red-alert-command-target-words-add = ВЫГОНЯЮЩАЯ ФРАЗА ДОБАВЛЕНА!
+guilds-voice-config-red-alert-command-target-words-remove = ВЫГОНЯЮЩАЯ ФРАЗА УДАЛЕНА!
+guilds-voice-config-red-alert-command-aliases-empty-params = МАЛО ПАРАМЕТРОВ!
+guilds-voice-config-red-alert-command-aliases-incorrect-user = НЕВЕРНЫЙ ПОЛЬЗОВАТЕЛЬ!
+guilds-voice-config-red-alert-command-aliases-add = ДОБАВЛЕН ПСЕВДОНИМ ДЛЯ {$user-name}!
+guilds-voice-config-red-alert-command-aliases-remove = УДАЛЕН ПСЕВДОНИМ ДЛЯ {$user-name}!
+guilds-voice-config-red-alert-command-aliases-replace = ЗАМЕНЕН ПСЕВДОНИМ ДЛЯ {$user-name}!
+guilds-voice-config-red-alert-command-similarity-threshold-empty-params = НЕ УКАЗАНА ПОГРЕШНОСТЬ!
+guilds-voice-config-red-alert-command-similarity-threshold-incorrect-params = НЕПРАВИЛЬНЫЙ ФОРМАТ ПОГРЕШНОСТИ!
+guilds-voice-config-red-alert-command-similarity-threshold-success = ПОГРЕШНОСТЬ ОБНОВЛЕНА НА ЗНАЧЕНИЕ: {$similarity-threshold}!
+guilds-voice-config-red-alert-command-list-template = 
+    Запретные:
+    {$self-words}
+    Выгоняющие:
+    {$target-words}
+    Псевдонимы:
+    {$aliases}
+    Погрешность: {$similarity-threshold}
+guilds-voice-config-red-alert-command-list-record-single = - {$record}
+guilds-voice-config-red-alert-command-list-record-double = - {$record-start}: {$record-end}

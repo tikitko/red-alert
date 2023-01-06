@@ -135,6 +135,7 @@ impl RedAlertCommandsHandlerConstructor {
                 }),
                 Box::new(GuildsVoiceConfigRedAlertCommand {
                     guilds_voice_config: guilds_voice_config.clone(),
+                    l10n: self.l10n.clone(),
                 }),
             ],
         }

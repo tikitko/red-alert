@@ -32,7 +32,7 @@ impl GuildsVoiceConfigRedAlertCommand {
         guild_voice_config: &mut RedAlertVoiceConfig<u64>,
         args: Vec<String>,
     ) -> String {
-        let word = args.join(" ");
+        let word = args.join(SPACE);
         if let Some(index) = guild_voice_config
             .target_words
             .iter()

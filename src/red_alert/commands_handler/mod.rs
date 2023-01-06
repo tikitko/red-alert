@@ -123,9 +123,11 @@ impl RedAlertCommandsHandlerConstructor {
                 }),
                 Box::new(StartListenRedAlertCommand {
                     guilds_voices_receivers: guilds_voices_receivers.clone(),
+                    l10n: self.l10n.clone(),
                 }),
                 Box::new(StopListenRedAlertCommand {
                     guilds_voices_receivers: guilds_voices_receivers.clone(),
+                    l10n: self.l10n.clone(),
                 }),
                 Box::new(ActionsHistoryRedAlertCommand {
                     actions_history: actions_history.clone(),

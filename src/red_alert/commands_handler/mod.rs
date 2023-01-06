@@ -1,5 +1,6 @@
 mod actions_history_command;
 mod guilds_voice_config_command;
+mod help_command_factory;
 mod on_ready;
 mod start_listen_command;
 mod stop_listen_command;
@@ -11,6 +12,7 @@ use actions_history_command::*;
 use chrono::{offset, DateTime, Utc};
 use fluent::fluent_args;
 use guilds_voice_config_command::*;
+use help_command_factory::*;
 use on_ready::*;
 use serde::{Deserialize, Serialize};
 use serenity::model::id::GuildId;
@@ -95,47 +97,15 @@ impl RedAlertGuildsVoiceConfig {
 }
 
 impl RedAlertCommandsHandlerConstructor {
-    pub fn build(self) -> Handler<impl Fn(String, HelpInfo) -> String> {
+    pub fn build(self) -> Handler {
         let guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>> =
             Arc::new(Default::default());
         let actions_history: Arc<Mutex<ActionsHistory>> = Arc::new(Default::default());
         let guilds_voice_config = Arc::new(RwLock::new(RedAlertGuildsVoiceConfig::read()));
-        let l10n = self.l10n.clone();
         Handler {
-            help_command: HelpCommandConfig {
-                prefix_anchor: self
-                    .l10n
-                    .string("help-command-prefix-anchor", fluent_args![]),
-                output_prefix: None,
-                output_format_fn: move |prefix_anchor, help_info| {
-                    vec![
-                        if let Some(header_suffix) = help_info.header_suffix {
-                            l10n.string(
-                                "help-command-full-header",
-                                fluent_args![
-                                    "header" => prefix_anchor,
-                                    "suffix" => header_suffix
-                                ],
-                            )
-                        } else {
-                            l10n.string(
-                                "help-command-short-header",
-                                fluent_args![
-                                    "header" => prefix_anchor
-                                ],
-                            )
-                        },
-                        l10n.string(
-                            "help-command-body",
-                            fluent_args![
-                                "body" => help_info.description
-                            ],
-                        ),
-                    ]
-                    .join(NEW_LINE)
-                        + NEW_LINE
-                },
-            },
+            help_command_factory: Box::new(RedAlertHelpCommandFactory {
+                l10n: self.l10n.clone(),
+            }),
             on_ready: Box::new(RedAlertOnReady {
                 guilds_voices_receivers: guilds_voices_receivers.clone(),
                 actions_history: actions_history.clone(),

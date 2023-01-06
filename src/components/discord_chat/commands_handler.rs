@@ -9,17 +9,17 @@ pub trait OnReady {
     async fn process(&self, ctx: Context, ready: Ready);
 }
 
+#[derive(Clone)]
+pub struct HelpInfo {
+    pub header_suffix: Option<String>,
+    pub description: String,
+}
+
 pub struct CommandParams<'a> {
     pub guild_id: Option<GuildId>,
     pub channel_id: ChannelId,
     pub author: User,
     pub args: &'a [String],
-}
-
-#[derive(Clone)]
-pub struct HelpInfo {
-    pub header_suffix: Option<String>,
-    pub description: String,
 }
 
 #[async_trait]
@@ -29,39 +29,21 @@ pub trait Command {
     async fn process<'a>(&'a self, ctx: Context, params: CommandParams<'a>);
 }
 
-pub struct PrintTextCommand {
-    pub prefix_anchor: String,
-    pub help_info: Option<HelpInfo>,
-    pub text: String,
+pub trait HelpCommandFactory {
+    fn help_command(
+        &self,
+        commands_info: Vec<(String, HelpInfo)>,
+    ) -> Box<dyn Command + Send + Sync + 'static>;
 }
 
-#[async_trait]
-impl Command for PrintTextCommand {
-    fn prefix_anchor(&self) -> String {
-        self.prefix_anchor.clone()
-    }
-    fn help_info(&self) -> Option<HelpInfo> {
-        self.help_info.clone()
-    }
-    async fn process<'a>(&'a self, ctx: Context, params: CommandParams<'a>) {
-        let _ = params.channel_id.say(&ctx, &self.text).await;
-    }
-}
-
-pub struct HelpCommandConfig<F: Fn(String, HelpInfo) -> String + Send + Sync + 'static> {
-    pub prefix_anchor: String,
-    pub output_prefix: Option<String>,
-    pub output_format_fn: F,
-}
-
-pub struct Handler<F: Fn(String, HelpInfo) -> String + Send + Sync + 'static> {
-    pub help_command: HelpCommandConfig<F>,
+pub struct Handler {
     pub on_ready: Box<dyn OnReady + Send + Sync + 'static>,
     pub commands: Vec<Box<dyn Command + Send + Sync + 'static>>,
+    pub help_command_factory: Box<dyn HelpCommandFactory + Send + Sync + 'static>,
 }
 
 #[async_trait]
-impl<F: Fn(String, HelpInfo) -> String + Send + Sync + 'static> EventHandler for Handler<F> {
+impl EventHandler for Handler {
     async fn message(&self, ctx: Context, msg: Message) {
         if msg.author.bot {
             return;
@@ -72,25 +54,16 @@ impl<F: Fn(String, HelpInfo) -> String + Send + Sync + 'static> EventHandler for
                 .map(str::to_lowercase)
                 .collect()
         }
-        let help_command: Box<dyn Command + Send + Sync> = Box::new(PrintTextCommand {
-            prefix_anchor: self.help_command.prefix_anchor.clone(),
-            help_info: None,
-            text: {
-                let mut help_text = self
-                    .commands
-                    .iter()
-                    .filter_map(|command| {
-                        command.help_info().map(|help_info| {
-                            (self.help_command.output_format_fn)(command.prefix_anchor(), help_info)
-                        })
-                    })
-                    .collect::<String>();
-                if let Some(output_prefix) = &self.help_command.output_prefix {
-                    help_text.insert_str(0, output_prefix);
-                }
-                help_text
-            },
-        });
+        let help_command = self.help_command_factory.help_command(
+            self.commands
+                .iter()
+                .filter_map(|command| {
+                    command
+                        .help_info()
+                        .map(|help_info| (command.prefix_anchor(), help_info))
+                })
+                .collect(),
+        );
         let args_commands = {
             let mut commands = self
                 .commands

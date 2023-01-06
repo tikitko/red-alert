@@ -296,11 +296,9 @@ impl Command for TextRedAlertCommand {
                         ),
                     }
                 } else {
-                    let mut result_strings = Vec::new();
-                    result_strings.push(
-                        self.l10n
-                            .string("red-alert-command-mass-records-header", fluent_args![]),
-                    );
+                    let mut result_strings = vec![self
+                        .l10n
+                        .string("red-alert-command-mass-records-header", fluent_args![])];
                     for index in 0..results.len() {
                         let deport_status = match &results[index] {
                             RedAlertDeportationResult::Deported => self

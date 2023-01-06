@@ -131,6 +131,7 @@ impl RedAlertCommandsHandlerConstructor {
                 }),
                 Box::new(ActionsHistoryRedAlertCommand {
                     actions_history: actions_history.clone(),
+                    l10n: self.l10n.clone(),
                 }),
                 Box::new(GuildsVoiceConfigRedAlertCommand {
                     guilds_voice_config: guilds_voice_config.clone(),

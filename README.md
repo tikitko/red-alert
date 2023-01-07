@@ -15,6 +15,7 @@ vosk_log_level: -1
 
 Red Alert Guilds Voice Configuration `guilds_voice_config.yaml`:
 ```yaml
+auto_track_guilds_ids: []
 base:
   target_words:
     - "красная тревога"

@@ -18,7 +18,7 @@ use serde::{Deserialize, Serialize};
 use serenity::model::id::GuildId;
 use serenity::model::prelude::UserId;
 use start_listen_command::*;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use stop_listen_command::*;
 use text_command::*;
@@ -74,6 +74,7 @@ impl ActionsHistory {
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 struct RedAlertGuildsVoiceConfig {
+    auto_track_guilds_ids: HashSet<u64>,
     base: RedAlertVoiceConfig<u64>,
     specific: HashMap<u64, RedAlertVoiceConfig<u64>>,
 }
@@ -114,7 +115,8 @@ impl RedAlertCommandsHandlerConstructor {
                 recognition_model: self.recognition_model,
                 listening_text: self.listening_text,
                 red_alert_handler: self.red_alert_handler.clone(),
-                cancel_sender: Arc::new(Mutex::new(None)),
+                cancel_recognizer_sender: Arc::new(Mutex::new(None)),
+                cancel_monitoring_sender: Arc::new(Mutex::new(None)),
             }),
             commands: vec![
                 Box::new(TextRedAlertCommand {

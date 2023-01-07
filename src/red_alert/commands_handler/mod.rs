@@ -36,7 +36,8 @@ enum ActionType {
     VoiceRedAlert {
         author_id: UserId,
         target_id: UserId,
-        reason: String,
+        full_text: String,
+        reason: RedAlertVoiceSearchResult,
         is_success: bool,
     },
     TextRedAlert {

@@ -37,7 +37,7 @@ impl RedAlertOnReady {
                 voices_queue: GuildsVoicesReceivers(guilds_voices_receivers),
             }
             .start();
-            let mut autors_processed_kicks: HashMap<UserId, HashSet<UserId>> = HashMap::new();
+            let mut authors_processed_kicks: HashMap<UserId, HashSet<UserId>> = HashMap::new();
             loop {
                 let Some(recognizer_state) = tokio::select! {
                     recognizer_state = recognizer_signal.recv() => recognizer_state,
@@ -76,30 +76,40 @@ impl RedAlertOnReady {
                             log_prefix, result.result_type, result.text
                         );
                         let guilds_voice_config = guilds_voice_config.read().await;
-                        let mut kick_users_ids = guilds_voice_config
+                        let users_ids_kicks_reasons = guilds_voice_config
                             .get(&info.guild_id)
                             .should_kick(&info.user_id.0, &result.text)
                             .into_iter()
-                            .map(|v| UserId(*v))
-                            .collect::<HashSet<UserId>>();
+                            .map(|v| (UserId(*v.0), v.1))
+                            .collect::<HashMap<UserId, RedAlertVoiceSearchResult>>();
                         drop(guilds_voice_config);
-                        if let Some(mut autor_processed_kicks) =
-                            autors_processed_kicks.remove(&info.user_id)
+                        let mut users_ids_kicks = users_ids_kicks_reasons
+                            .keys()
+                            .cloned()
+                            .collect::<HashSet<UserId>>();
+                        if let Some(mut author_processed_kicks) =
+                            authors_processed_kicks.remove(&info.user_id)
                         {
-                            kick_users_ids = &kick_users_ids - &autor_processed_kicks;
-                            autor_processed_kicks.extend(kick_users_ids.clone());
-                            autors_processed_kicks.insert(info.user_id, autor_processed_kicks);
+                            users_ids_kicks = &users_ids_kicks - &author_processed_kicks;
+                            author_processed_kicks.extend(users_ids_kicks.clone());
+                            authors_processed_kicks.insert(info.user_id, author_processed_kicks);
                         } else {
-                            autors_processed_kicks.insert(info.user_id, kick_users_ids.clone());
+                            authors_processed_kicks.insert(info.user_id, users_ids_kicks.clone());
                         }
-                        if kick_users_ids.is_empty() {
+                        if users_ids_kicks.is_empty() {
                             continue;
                         };
-                        info!(
-                            "{} Recognition RESULT will be used for kick. Have restrictions.",
-                            log_prefix
-                        );
-                        for kick_user_id in kick_users_ids {
+                        for (kick_user_id, kick_reason) in users_ids_kicks_reasons {
+                            if !users_ids_kicks.contains(&kick_user_id) {
+                                continue;
+                            }
+                            info!(
+                                "{} Recognition RESULT will be used for kick. Have restriction \"{}\"({}) ~~ \"{}\".",
+                                log_prefix,
+                                kick_reason.real_word,
+                                kick_reason.total_similarity,
+                                kick_reason.word
+                            );
                             let actions_history = actions_history.clone();
                             let red_alert_handler = red_alert_handler.clone();
                             let ctx = ctx.clone();
@@ -119,7 +129,8 @@ impl RedAlertOnReady {
                                     ActionType::VoiceRedAlert {
                                         author_id: info.user_id,
                                         target_id: kick_user_id,
-                                        reason: result_text,
+                                        full_text: result_text,
+                                        reason: kick_reason,
                                         is_success: deportation_result.is_deported(),
                                     },
                                 );
@@ -128,11 +139,11 @@ impl RedAlertOnReady {
                     }
                     RecognizerState::RecognitionStart(info) => {
                         info!("{} Recognition STARTED.", log_prefix);
-                        autors_processed_kicks.remove(&info.user_id);
+                        authors_processed_kicks.remove(&info.user_id);
                     }
                     RecognizerState::RecognitionEnd(info) => {
                         info!("{} Recognition ENDED.", log_prefix);
-                        autors_processed_kicks.remove(&info.user_id);
+                        authors_processed_kicks.remove(&info.user_id);
                     }
                 }
             }

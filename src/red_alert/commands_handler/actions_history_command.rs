@@ -39,9 +39,21 @@ impl Command for ActionsHistoryRedAlertCommand {
                     ActionType::VoiceRedAlert {
                         author_id,
                         target_id,
+                        full_text,
                         reason,
                         is_success,
                     } => {
+                        let reason_text = full_text.replace(
+                            reason.real_word.as_str(),
+                            self.l10n
+                                .string(
+                                    "actions-history-red-alert-command-voice-record-reason-format",
+                                    fluent_args![
+                                        "reason" => reason.real_word.to_owned()
+                                    ],
+                                )
+                                .as_str(),
+                        );
                         let target_name = target_id.mention().to_string();
                         if author_id == target_id {
                             self.l10n.string(
@@ -59,7 +71,9 @@ impl Command for ActionsHistoryRedAlertCommand {
                                             fluent_args![],
                                         )
                                     },
-                                    "reason" => reason.to_owned()
+                                    "reason-text" => reason_text,
+                                    "restricted-word" => reason.word.to_owned(),
+                                    "similarity-percent" => (reason.total_similarity * 100.0) as u8
                                 ],
                             )
                         } else {
@@ -79,7 +93,9 @@ impl Command for ActionsHistoryRedAlertCommand {
                                         )
                                     },
                                     "author-name" => author_id.mention().to_string(),
-                                    "reason" => reason.to_owned()
+                                    "reason-text" => reason_text,
+                                    "restricted-word" => reason.word.to_owned(),
+                                    "similarity-percent" => (reason.total_similarity * 100.0) as u8
                                 ],
                             )
                         }
@@ -134,7 +150,10 @@ impl Command for ActionsHistoryRedAlertCommand {
                     "actions-history-red-alert-command-record",
                     fluent_args![
                         "record-number" => action_info_index + 1,
-                        "time" => guild_history[action_info_index].time.to_rfc2822(),
+                        "time" => guild_history[action_info_index].time.format(self.l10n.string(
+                            "actions-history-red-alert-command-voice-record-time-format",
+                            fluent_args![],
+                        ).as_str()).to_string(),
                         "record" => info_string
                     ],
                 ));

@@ -1,7 +1,7 @@
 use super::*;
 use ngrammatic::CorpusBuilder;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -10,6 +10,7 @@ pub struct RedAlertVoiceConfig<ID: Eq + Hash> {
     pub self_words: Vec<String>,
     pub aliases: HashMap<String, ID>,
     pub similarity_threshold: f32,
+    pub editors: Option<HashSet<ID>>,
 }
 
 pub struct RedAlertVoiceSearchResult {

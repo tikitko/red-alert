@@ -137,6 +137,55 @@ fn process_similarity_threshold(
         ],
     )
 }
+fn process_editors(
+    l10n: &L10n,
+    guild_voice_config: &mut RedAlertVoiceConfig<u64>,
+    mut args: Vec<String>,
+) -> String {
+    if !(args.len() > 0) {
+        return l10n.string(
+            "guilds-voice-config-red-alert-command-editors-empty-params",
+            fluent_args![],
+        );
+    }
+    let user_id_string = args.remove(0);
+    let Some(user_id) = (match Mention::from_str(&*user_id_string) {
+        Ok(mention) => match mention {
+            Mention::User(user_id) => Some(user_id),
+            Mention::Channel(_) | Mention::Role(_) | Mention::Emoji(_, _) => None,
+        },
+        Err(_) => user_id_string.parse::<u64>().ok().map(UserId),
+    }) else {
+        return l10n.string(
+            "guilds-voice-config-red-alert-command-editors-incorrect-user",
+            fluent_args![],
+        )
+    };
+    let mut editors = guild_voice_config.editors.clone().unwrap_or_default();
+    let answer: String;
+    if editors.contains(&user_id.0) {
+        if editors.len() > 1 {
+            editors.remove(&user_id.0);
+            answer = l10n.string(
+                "guilds-voice-config-red-alert-command-editors-remove",
+                fluent_args![],
+            );
+        } else {
+            answer = l10n.string(
+                "guilds-voice-config-red-alert-command-editors-one-error",
+                fluent_args![],
+            );
+        }
+    } else {
+        editors.insert(user_id.0);
+        answer = l10n.string(
+            "guilds-voice-config-red-alert-command-editors-add",
+            fluent_args![],
+        );
+    }
+    guild_voice_config.editors = Some(editors);
+    answer
+}
 fn process_list(l10n: &L10n, guild_voice_config: &RedAlertVoiceConfig<u64>) -> String {
     l10n.string(
         "guilds-voice-config-red-alert-command-list-template",
@@ -185,6 +234,7 @@ enum Action {
     TargetWords,
     Aliases,
     SimilarityThreshold,
+    Editors,
     List,
 }
 
@@ -202,6 +252,7 @@ impl Action {
             Action::SimilarityThreshold => {
                 process_similarity_threshold(l10n, guild_voice_config, args)
             }
+            Action::Editors => process_editors(l10n, guild_voice_config, args),
             Action::List => process_list(l10n, guild_voice_config),
         }
     }
@@ -241,57 +292,75 @@ impl Command for GuildsVoiceConfigRedAlertCommand {
             }
         };
         let mut args = params.args.to_vec();
-        let answer_msg = if args.len() > 0 {
-            let actions: HashMap<String, Action> = HashMap::from([
-                (
-                    self.l10n.string(
-                        "guilds-voice-config-red-alert-command-self-words-action",
-                        fluent_args![],
-                    ),
-                    Action::SelfWords,
-                ),
-                (
-                    self.l10n.string(
-                        "guilds-voice-config-red-alert-command-target-words-action",
-                        fluent_args![],
-                    ),
-                    Action::TargetWords,
-                ),
-                (
-                    self.l10n.string(
-                        "guilds-voice-config-red-alert-command-aliases-action",
-                        fluent_args![],
-                    ),
-                    Action::Aliases,
-                ),
-                (
-                    self.l10n.string(
-                        "guilds-voice-config-red-alert-command-similarity-threshold-action",
-                        fluent_args![],
-                    ),
-                    Action::SimilarityThreshold,
-                ),
-                (
-                    self.l10n.string(
-                        "guilds-voice-config-red-alert-command-list-action",
-                        fluent_args![],
-                    ),
-                    Action::List,
-                ),
-            ]);
-            if let Some(action) = actions.get(&*args.remove(0)) {
-                action.process(&self.l10n, &mut guild_voice_config, args)
-            } else {
+        let answer_msg = {
+            let access_granted = guild_voice_config
+                .editors
+                .as_ref()
+                .map_or_else(|| true, |e| e.contains(&params.author.id.0));
+            if !access_granted {
+                self.l10n.string(
+                    "guilds-voice-config-red-alert-command-no-access",
+                    fluent_args![],
+                )
+            } else if !(args.len() > 0) {
                 self.l10n.string(
                     "guilds-voice-config-red-alert-command-empty-action",
                     fluent_args![],
                 )
+            } else {
+                let actions: HashMap<String, Action> = HashMap::from([
+                    (
+                        self.l10n.string(
+                            "guilds-voice-config-red-alert-command-self-words-action",
+                            fluent_args![],
+                        ),
+                        Action::SelfWords,
+                    ),
+                    (
+                        self.l10n.string(
+                            "guilds-voice-config-red-alert-command-target-words-action",
+                            fluent_args![],
+                        ),
+                        Action::TargetWords,
+                    ),
+                    (
+                        self.l10n.string(
+                            "guilds-voice-config-red-alert-command-aliases-action",
+                            fluent_args![],
+                        ),
+                        Action::Aliases,
+                    ),
+                    (
+                        self.l10n.string(
+                            "guilds-voice-config-red-alert-command-similarity-threshold-action",
+                            fluent_args![],
+                        ),
+                        Action::SimilarityThreshold,
+                    ),
+                    (
+                        self.l10n.string(
+                            "guilds-voice-config-red-alert-command-editors-action",
+                            fluent_args![],
+                        ),
+                        Action::Editors,
+                    ),
+                    (
+                        self.l10n.string(
+                            "guilds-voice-config-red-alert-command-list-action",
+                            fluent_args![],
+                        ),
+                        Action::List,
+                    ),
+                ]);
+                if let Some(action) = actions.get(&*args.remove(0)) {
+                    action.process(&self.l10n, &mut guild_voice_config, args)
+                } else {
+                    self.l10n.string(
+                        "guilds-voice-config-red-alert-command-empty-action",
+                        fluent_args![],
+                    )
+                }
             }
-        } else {
-            self.l10n.string(
-                "guilds-voice-config-red-alert-command-empty-action",
-                fluent_args![],
-            )
         };
         guilds_voice_config
             .specific

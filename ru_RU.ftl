@@ -62,12 +62,14 @@ guilds-voice-config-red-alert-command-help-description =
     {"["}псевдоним{"]"} {"{"}фраза{"}"} {"{"}ID или упоминание пользователя{"}"} - добавляет/удаляет псевдоним для пользователя который можно использовать в распознавателе речи.
     {"["}погрешность{"]"} {"{"}0.0 - 1.0{"}"} - устанавливает погрешность разпознавания речи.
     {"["}список{"]"} - список всех фраз.
+guilds-voice-config-red-alert-command-no-access = АТДЫХАЙ, У ТЕБЯ НЕТУ ДОСТУПА!
 guilds-voice-config-red-alert-command-empty-action = НЕ УКАЗАНО ДЕЙСТВИЕ!
 guilds-voice-config-red-alert-command-incorrect-action = НЕТУ ТАКОГО ДЕЙСТВИЯ!
 guilds-voice-config-red-alert-command-self-words-action = запретная
 guilds-voice-config-red-alert-command-target-words-action = выгоняющая
 guilds-voice-config-red-alert-command-aliases-action = псевдоним
 guilds-voice-config-red-alert-command-similarity-threshold-action = погрешность
+guilds-voice-config-red-alert-command-editors-action = редактор
 guilds-voice-config-red-alert-command-list-action = список
 guilds-voice-config-red-alert-command-self-words-add = ЗАПРЕТНАЯ ФРАЗА ДОБАВЛЕНА!
 guilds-voice-config-red-alert-command-self-words-remove = ЗАПРЕТНАЯ ФРАЗА УДАЛЕНА!
@@ -81,6 +83,11 @@ guilds-voice-config-red-alert-command-aliases-replace = ЗАМЕНЕН ПСЕВ�
 guilds-voice-config-red-alert-command-similarity-threshold-empty-params = НЕ УКАЗАНА ПОГРЕШНОСТЬ!
 guilds-voice-config-red-alert-command-similarity-threshold-incorrect-params = НЕПРАВИЛЬНЫЙ ФОРМАТ ПОГРЕШНОСТИ!
 guilds-voice-config-red-alert-command-similarity-threshold-success = ПОГРЕШНОСТЬ ОБНОВЛЕНА НА ЗНАЧЕНИЕ: {$similarity-threshold}!
+guilds-voice-config-red-alert-command-editors-empty-params = МАЛО ПАРАМЕТРОВ!
+guilds-voice-config-red-alert-command-editors-incorrect-user = НЕВЕРНЫЙ ПОЛЬЗОВАТЕЛЬ!
+guilds-voice-config-red-alert-command-editors-add = РЕДАКТОР ДОБАВЛЕН!
+guilds-voice-config-red-alert-command-editors-remove = РЕДАКТОР УДАЛЕН!
+guilds-voice-config-red-alert-command-editors-one-error = НЕВОЗМОЖНО УДАЛИТЬ ПОСЛЕДНЕГО РЕДАКТОРА! ВСЕГДА ДОЛЖЕН БЫТЬ КОРОЛЬ ЛИЧ!
 guilds-voice-config-red-alert-command-list-template = 
     {"*"}{"*"}Запретные:{"*"}{"*"}
     {$self-words}

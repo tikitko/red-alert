@@ -54,14 +54,15 @@ actions-history-red-alert-command-text-self-record = КРИНЖОВИК {$target
 actions-history-red-alert-command-text-target-record = КРИНЖОВИК {$target-name} {status} КОМАНДОЙ МИРОТВОРЦA {$author-name}
 actions-history-red-alert-command-record = {$record-number}. [ВРЕМЯ: {$time}] {$record}.
 actions-history-red-alert-command-empty-list = ПОКА ЕЩЕ НИКОГО НЕ УШАТАЛ НА ЭТОМ СЕРВЕР)!1!))
-guilds-voice-config-red-alert-command-prefix-anchor = код красный фраза
-guilds-voice-config-red-alert-command-header-suffix = [запретная/выгоняющая/псевдоним/погрешность/список]
+guilds-voice-config-red-alert-command-prefix-anchor = код красный настройка голоса
+guilds-voice-config-red-alert-command-header-suffix = [запретная/выгоняющая/псевдоним/погрешность/список/автослежение]
 guilds-voice-config-red-alert-command-help-description =
     {"["}запретная{"]"} {"{"}фраза{"}"} - добавляет/удаляет фразу при призношении которой пользователь будет исключен.
     {"["}выгоняющая{"]"} {"{"}фраза{"}"} - добавляет/удаляет фразу при призношении которой пользователь может исключить другого пользователя.
     {"["}псевдоним{"]"} {"{"}фраза{"}"} {"{"}ID или упоминание пользователя{"}"} - добавляет/удаляет псевдоним для пользователя который можно использовать в распознавателе речи.
     {"["}погрешность{"]"} {"{"}0.0 - 1.0{"}"} - устанавливает погрешность разпознавания речи.
     {"["}список{"]"} - список всех фраз.
+    {"["}автослежение{"]"} - включает/выключает автослежение за голосовыми каналами (подключается к каналам где находится больше всего людей).
 guilds-voice-config-red-alert-command-no-access = АТДЫХАЙ, У ТЕБЯ НЕТУ ДОСТУПА!
 guilds-voice-config-red-alert-command-empty-action = НЕ УКАЗАНО ДЕЙСТВИЕ!
 guilds-voice-config-red-alert-command-incorrect-action = НЕТУ ТАКОГО ДЕЙСТВИЯ!
@@ -71,6 +72,7 @@ guilds-voice-config-red-alert-command-aliases-action = псевдоним
 guilds-voice-config-red-alert-command-similarity-threshold-action = погрешность
 guilds-voice-config-red-alert-command-editors-action = редактор
 guilds-voice-config-red-alert-command-list-action = список
+guilds-voice-config-red-alert-command-auto-track-action = автослежение
 guilds-voice-config-red-alert-command-self-words-add = ЗАПРЕТНАЯ ФРАЗА ДОБАВЛЕНА!
 guilds-voice-config-red-alert-command-self-words-remove = ЗАПРЕТНАЯ ФРАЗА УДАЛЕНА!
 guilds-voice-config-red-alert-command-target-words-add = ВЫГОНЯЮЩАЯ ФРАЗА ДОБАВЛЕНА!
@@ -95,6 +97,7 @@ guilds-voice-config-red-alert-command-list-template =
     {$target-words}
     {"*"}{"*"}Псевдонимы:{"*"}{"*"}
     {$aliases}
-    {"*"}{"*"}Погрешность:{"*"}{"*"} {$similarity-threshold}
 guilds-voice-config-red-alert-command-list-record-single = - {$record}
 guilds-voice-config-red-alert-command-list-record-double = - {$record-start}: {$record-end}
+guilds-voice-config-red-alert-command-auto-track-add = АВТОСЛЕЖЕНИЕ ДЛЯ ЭТОГО СЕРВЕРА __ВКЛЮЧЕНО__!
+guilds-voice-config-red-alert-command-auto-track-remove = АВТОСЛЕЖЕНИЕ ДЛЯ ЭТОГО СЕРВЕРА __ВЫКЛЮЧЕНО__!

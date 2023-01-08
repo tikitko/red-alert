@@ -223,8 +223,7 @@ fn process_list(l10n: &L10n, guild_voice_config: &RedAlertVoiceConfig<u64>) -> S
                     ],
                 ))
                 .collect::<Vec<String>>()
-                .join(NEW_LINE),
-            "similarity-threshold" => guild_voice_config.similarity_threshold
+                .join(NEW_LINE)
         ],
     )
 }
@@ -352,11 +351,30 @@ impl Command for GuildsVoiceConfigRedAlertCommand {
                         Action::List,
                     ),
                 ]);
-                if let Some(action) = actions.get(&*args.remove(0)) {
+                let action_string = args.remove(0);
+                if let Some(action) = actions.get(&action_string) {
                     action.process(&self.l10n, &mut guild_voice_config, args)
+                } else if self.l10n.string(
+                    "guilds-voice-config-red-alert-command-auto-track-action",
+                    fluent_args![],
+                ) == action_string
+                {
+                    if guilds_voice_config.auto_track_ids.contains(&guild_id.0) {
+                        guilds_voice_config.auto_track_ids.remove(&guild_id.0);
+                        self.l10n.string(
+                            "guilds-voice-config-red-alert-command-auto-track-remove",
+                            fluent_args![],
+                        )
+                    } else {
+                        guilds_voice_config.auto_track_ids.insert(guild_id.0);
+                        self.l10n.string(
+                            "guilds-voice-config-red-alert-command-auto-track-add",
+                            fluent_args![],
+                        )
+                    }
                 } else {
                     self.l10n.string(
-                        "guilds-voice-config-red-alert-command-empty-action",
+                        "guilds-voice-config-red-alert-command-incorrect-action",
                         fluent_args![],
                     )
                 }

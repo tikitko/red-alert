@@ -14,12 +14,12 @@ pub(super) struct StartListenRedAlertCommand {
     pub(super) l10n: L10n,
 }
 
-enum StartListenError {
+pub enum StartListenError {
     SongbirdMissing,
     ConnectingError,
 }
 
-async fn start_listen(
+pub async fn start_listen(
     guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
     ctx: &Context,
     guild_id: GuildId,

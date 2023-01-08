@@ -3,7 +3,7 @@ use serenity::prelude::{Context, Mentionable};
 use std::sync::Arc;
 
 pub(super) struct ActionsHistoryRedAlertCommand {
-    pub(super) actions_history: Arc<Mutex<ActionsHistory>>,
+    pub(super) actions_history: Arc<Mutex<RedAlertActionsHistory>>,
     pub(super) l10n: L10n,
 }
 
@@ -29,14 +29,14 @@ impl Command for ActionsHistoryRedAlertCommand {
             return;
         };
         let mut actions_history = self.actions_history.lock().await;
-        let answer_msg = if let Some(guild_history) = (*actions_history).0.get(&guild_id) {
+        let answer_msg = if let Some(guild_history) = (*actions_history).extract(&guild_id) {
             let mut result_strings = vec![self.l10n.string(
                 "actions-history-red-alert-command-list-header",
                 fluent_args![],
             )];
             for action_info_index in 0..guild_history.len() {
                 let info_string = match &guild_history[action_info_index].r#type {
-                    ActionType::VoiceRedAlert {
+                    RedAlertActionType::Voice {
                         author_id,
                         target_id,
                         full_text,
@@ -100,7 +100,7 @@ impl Command for ActionsHistoryRedAlertCommand {
                             )
                         }
                     }
-                    ActionType::TextRedAlert {
+                    RedAlertActionType::Text {
                         author_id,
                         target_id,
                         is_success,
@@ -165,7 +165,6 @@ impl Command for ActionsHistoryRedAlertCommand {
                 fluent_args![],
             )
         };
-        (*actions_history).0.remove(&guild_id);
         drop(actions_history);
         let _ = params.channel_id.say(&ctx, answer_msg).await;
     }

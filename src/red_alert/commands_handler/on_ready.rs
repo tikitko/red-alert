@@ -1,28 +1,30 @@
 use super::*;
 use serenity::model::gateway::Activity;
 use serenity::model::id::GuildId;
-use serenity::model::prelude::{OnlineStatus, Ready, UserId};
+use serenity::model::prelude::{ChannelId, OnlineStatus, Ready, UserId};
 use serenity::prelude::Context;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::sync::oneshot::{channel, Sender};
 use tokio::sync::{Mutex, RwLock};
 use voskrust::api::Model as VoskModel;
 
 pub(super) struct RedAlertOnReady {
     pub(super) guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
-    pub(super) actions_history: Arc<Mutex<ActionsHistory>>,
+    pub(super) actions_history: Arc<Mutex<RedAlertActionsHistory>>,
     pub(super) guilds_voice_config: Arc<RwLock<RedAlertGuildsVoiceConfig>>,
     pub(super) recognition_model: VoskModel,
     pub(super) listening_text: Option<String>,
     pub(super) red_alert_handler: Arc<RedAlertHandler>,
-    pub(super) cancel_sender: Arc<Mutex<Option<Sender<()>>>>,
+    pub(super) cancel_recognizer_sender: Arc<Mutex<Option<Sender<()>>>>,
+    pub(super) cancel_monitoring_sender: Arc<Mutex<Option<Sender<()>>>>,
 }
 
 impl RedAlertOnReady {
     async fn start_recognizer(&self, ctx: &Context) {
         let (tx, mut rx) = channel::<()>();
-        let mut cancel_sender = self.cancel_sender.lock().await;
+        let mut cancel_sender = self.cancel_recognizer_sender.lock().await;
         *cancel_sender = Some(tx);
         drop(cancel_sender);
         let guilds_voices_receivers = self.guilds_voices_receivers.clone();
@@ -104,7 +106,7 @@ impl RedAlertOnReady {
                                 continue;
                             }
                             info!(
-                                "{} Recognition RESULT will be used for kick. Have restriction \"{}\"({}) ~~ \"{}\".",
+                                "{} Recognition RESULT will be used for kick. Have restriction \"{}\"({}) =~ \"{}\".",
                                 log_prefix,
                                 kick_reason.real_word,
                                 kick_reason.total_similarity,
@@ -126,7 +128,7 @@ impl RedAlertOnReady {
                                 );
                                 actions_history.lock().await.log_history(
                                     guild_id,
-                                    ActionType::VoiceRedAlert {
+                                    RedAlertActionType::Voice {
                                         author_id: info.user_id,
                                         target_id: kick_user_id,
                                         full_text: result_text,
@@ -149,6 +151,74 @@ impl RedAlertOnReady {
             }
         });
     }
+    async fn start_monitoring(&self, ctx: &Context) {
+        let (tx, mut rx) = channel::<()>();
+        let mut cancel_sender = self.cancel_monitoring_sender.lock().await;
+        *cancel_sender = Some(tx);
+        drop(cancel_sender);
+        let guilds_voices_receivers = self.guilds_voices_receivers.clone();
+        let guilds_voice_config = self.guilds_voice_config.clone();
+        let ctx = ctx.clone();
+        tokio::spawn(async move {
+            let mut guilds_active_channels: HashMap<GuildId, ChannelId> = HashMap::new();
+            loop {
+                let Some(_) = tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(1)) => Some(()),
+                    _ = &mut rx => None,
+                } else {
+                    break;
+                };
+                let bot_user_id = ctx.cache.current_user_id();
+                let guilds_voice_config = guilds_voice_config.read().await;
+                for guild_id in &guilds_voice_config.auto_track_ids {
+                    let Some(guild) = ctx.cache.guild(*guild_id) else {
+                        continue;
+                    };
+                    let mut channels_users_counts: HashMap<ChannelId, u8> = HashMap::new();
+                    for (user_id, voice_state) in guild.voice_states {
+                        if bot_user_id == user_id {
+                            continue;
+                        }
+                        let Some(channel_id) = voice_state.channel_id else {
+                            continue;
+                        };
+                        if let Some(users_count) = channels_users_counts.remove(&channel_id) {
+                            channels_users_counts.insert(channel_id, users_count + 1);
+                        } else {
+                            channels_users_counts.insert(channel_id, 1);
+                        }
+                    }
+                    if let Some(channel_id) = {
+                        let mut channels_users_counts = channels_users_counts
+                            .into_iter()
+                            .collect::<Vec<(ChannelId, u8)>>();
+                        channels_users_counts.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+                        channels_users_counts.first().map(|c| c.0)
+                    } {
+                        let is_prev_channel = guilds_active_channels
+                            .get(&guild.id)
+                            .map_or_else(|| false, |i| i == &channel_id);
+                        if is_prev_channel {
+                            continue;
+                        }
+                        guilds_active_channels.insert(guild.id, channel_id);
+                        _ = start_listen(
+                            guilds_voices_receivers.clone(),
+                            &ctx,
+                            guild.id,
+                            channel_id,
+                        )
+                        .await;
+                    } else {
+                        if !guilds_active_channels.remove(&guild.id).is_some() {
+                            continue;
+                        }
+                        _ = stop_listen(guilds_voices_receivers.clone(), &ctx, guild.id).await;
+                    }
+                }
+            }
+        });
+    }
 }
 
 #[async_trait]
@@ -158,5 +228,6 @@ impl OnReady for RedAlertOnReady {
         let activity = self.listening_text.as_ref().map(|t| Activity::listening(t));
         ctx.set_presence(activity, OnlineStatus::Online).await;
         self.start_recognizer(&ctx).await;
+        self.start_monitoring(&ctx).await;
     }
 }

@@ -8,7 +8,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 
 pub(super) struct TextRedAlertCommand {
-    pub(super) actions_history: Arc<Mutex<ActionsHistory>>,
+    pub(super) actions_history: Arc<Mutex<RedAlertActionsHistory>>,
     pub(super) red_alert_handler: Arc<RedAlertHandler>,
     pub(super) l10n: L10n,
 }
@@ -145,7 +145,7 @@ impl Command for TextRedAlertCommand {
             } => {
                 self.actions_history.lock().await.log_history(
                     guild_id,
-                    ActionType::TextRedAlert {
+                    RedAlertActionType::Text {
                         author_id,
                         target_id: author_id,
                         is_success: auto_self_kick_result.is_deported(),
@@ -169,7 +169,7 @@ impl Command for TextRedAlertCommand {
             CommonRedAlertResult::SingleSuccess { is_self_kick } => {
                 self.actions_history.lock().await.log_history(
                     guild_id,
-                    ActionType::TextRedAlert {
+                    RedAlertActionType::Text {
                         author_id,
                         target_id: target_users_ids[0],
                         is_success: true,
@@ -193,7 +193,7 @@ impl Command for TextRedAlertCommand {
                 let mut actions_history = self.actions_history.lock().await;
                 actions_history.log_history(
                     guild_id,
-                    ActionType::TextRedAlert {
+                    RedAlertActionType::Text {
                         author_id,
                         target_id: target_users_ids[0],
                         is_success: false,
@@ -202,7 +202,7 @@ impl Command for TextRedAlertCommand {
                 if let Some(self_kick_result) = auto_self_kick_result {
                     actions_history.log_history(
                         guild_id,
-                        ActionType::TextRedAlert {
+                        RedAlertActionType::Text {
                             author_id,
                             target_id: author_id,
                             is_success: self_kick_result.is_deported(),
@@ -235,7 +235,7 @@ impl Command for TextRedAlertCommand {
             } => {
                 self.actions_history.lock().await.log_history(
                     guild_id,
-                    ActionType::TextRedAlert {
+                    RedAlertActionType::Text {
                         author_id,
                         target_id: target_users_ids[0],
                         is_success: false,
@@ -265,7 +265,7 @@ impl Command for TextRedAlertCommand {
                 for result_index in 0..results.len() {
                     actions_history.log_history(
                         guild_id,
-                        ActionType::TextRedAlert {
+                        RedAlertActionType::Text {
                             author_id,
                             target_id: target_users_ids[result_index],
                             is_success: results[result_index].is_deported(),
@@ -275,7 +275,7 @@ impl Command for TextRedAlertCommand {
                 if let Some(auto_self_kick_result) = auto_self_kick_result {
                     actions_history.log_history(
                         guild_id,
-                        ActionType::TextRedAlert {
+                        RedAlertActionType::Text {
                             author_id,
                             target_id: author_id,
                             is_success: auto_self_kick_result.is_deported(),

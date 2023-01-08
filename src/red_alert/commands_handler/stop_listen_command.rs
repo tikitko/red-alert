@@ -10,13 +10,13 @@ pub(super) struct StopListenRedAlertCommand {
     pub(super) l10n: L10n,
 }
 
-enum StopListenError {
+pub enum StopListenError {
     SongbirdMissing,
     DisconnectingError,
     NoListeners,
 }
 
-async fn stop_listen(
+pub async fn stop_listen(
     guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
     ctx: &Context,
     guild_id: GuildId,

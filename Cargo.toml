@@ -1,19 +1,24 @@
 [package]
 name = "red-alert"
-version = "0.0.8"
+version = "0.0.9"
 edition = "2021"
 
 [dependencies]
 log = "0.4"
 log4rs = "1.1.1"
-guard = "0.5.1"
 bimap = "0.6.2"
 config = "0.13.1"
 voskrust = { git = "https://github.com/tikitko/voskrust.git", rev = "93a5a11" }
 songbird = "0.3.0"
 fon = "0.6.0"
+chrono = "0.4.23"
 serenity = { version = "0.11", default-features = false, features = ["builder", "cache", "client", "gateway", "model", "utils", "rustls_backend", "collector", "voice"] }
 tokio = { version = "1.0", features = ["macros", "rt-multi-thread"] }
 ngrammatic = "0.4.0"
 async-trait = "0.1.57"
 uuid = { version = "1.1.2", features = ["v4"] }
+serde = "1.0"
+serde_yaml = "0.9"
+fluent = "0.16.0"
+intl-memoizer = "0.5.1"
+unic-langid = { version = "0.9.1", features = ["unic-langid-macros"] }

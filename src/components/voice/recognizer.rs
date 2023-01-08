@@ -1,6 +1,5 @@
-use crate::*;
-use guard::guard;
-use serenity::model::id::UserId;
+use super::super::base::*;
+use super::*;
 use std::error::Error;
 use std::fmt::Debug;
 use std::thread;
@@ -10,23 +9,17 @@ use tokio::task::*;
 use tokio::time::*;
 use voskrust::api::Model as VoskModel;
 
-#[derive(Debug, Clone, Copy)]
-pub struct RecognitionInfo<I: Copy> {
-    pub user_id: UserId,
-    pub inner: I,
-}
-
 #[derive(Debug, Clone)]
-pub enum RecognizerState<I: Copy> {
-    RecognitionStart(RecognitionInfo<I>),
-    RecognitionResult(RecognitionInfo<I>, RecognitionResult),
-    RecognitionEnd(RecognitionInfo<I>),
+pub enum RecognizerState<RecognitionInfo: Copy> {
+    RecognitionStart(RecognitionInfo),
+    RecognitionResult(RecognitionInfo, RecognitionResult),
+    RecognitionEnd(RecognitionInfo),
 }
 
 pub struct Recognizer<
     I: Copy + Send + Sync + Debug + 'static,
     C: for<'a> VoiceContainer<'a> + Send + Sync + 'static,
-    Q: QueuedItemsContainer<Item = InfoVoiceContainer<I, C>> + Clone + Send + Sync + 'static,
+    Q: QueuedItemsContainer<Item = InfoVoiceContainer<I, C>> + Send + Sync + 'static,
 > {
     pub model: VoskModel,
     pub voices_queue: Q,
@@ -35,7 +28,7 @@ pub struct Recognizer<
 impl<
         I: Copy + Send + Sync + Debug + 'static,
         C: for<'a> VoiceContainer<'a> + Send + Sync + 'static,
-        Q: QueuedItemsContainer<Item = InfoVoiceContainer<I, C>> + Clone + Send + Sync + 'static,
+        Q: QueuedItemsContainer<Item = InfoVoiceContainer<I, C>> + Send + Sync + 'static,
     > Recognizer<I, C, Q>
 {
     async fn recognition_task(
@@ -43,12 +36,8 @@ impl<
         info_voice_container: InfoVoiceContainer<I, C>,
         model: VoskModel,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
-        let recognition_info = RecognitionInfo {
-            user_id: *info_voice_container.container.user_id(),
-            inner: info_voice_container.info,
-        };
         sender
-            .send(RecognizerState::RecognitionStart(recognition_info))
+            .send(RecognizerState::RecognitionStart(info_voice_container.info))
             .await?;
         let inner_sender = sender.clone();
         spawn_blocking(move || {
@@ -61,7 +50,7 @@ impl<
                     }
                     RecognitionState::Result(recognition_result) => match inner_sender
                         .blocking_send(RecognizerState::RecognitionResult(
-                            recognition_info,
+                            info_voice_container.info,
                             recognition_result,
                         )) {
                         Ok(_) => {}
@@ -73,7 +62,7 @@ impl<
         })
         .await??;
         sender
-            .send(RecognizerState::RecognitionEnd(recognition_info))
+            .send(RecognizerState::RecognitionEnd(info_voice_container.info))
             .await?;
         Ok(())
     }
@@ -85,8 +74,9 @@ impl<
                     break;
                 }
                 sleep(Duration::from_millis(10)).await;
-                guard!(let Some(info_voice_container) = self.voices_queue.next().await
-                    else { continue });
+                let Some(info_voice_container) = self.voices_queue.next().await else {
+                    continue;
+                };
                 spawn(Self::recognition_task(
                     tx.clone(),
                     info_voice_container,

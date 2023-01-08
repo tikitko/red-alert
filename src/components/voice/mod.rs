@@ -1,5 +1,9 @@
-use async_trait::async_trait;
-use serenity::model::prelude::UserId;
+mod recognition;
+mod recognizer;
+
+pub use recognition::*;
+pub use recognizer::*;
+
 use std::ops::Deref;
 
 pub struct Voice {
@@ -11,7 +15,11 @@ pub struct Voice {
 #[async_trait]
 pub trait VoiceContainer<'a> {
     type Voice: Deref<Target = Voice> + 'a;
-    fn user_id(&self) -> &UserId;
     async fn voice(&'a self) -> Self::Voice;
     fn blocking_voice(&'a self) -> Self::Voice;
+}
+
+pub struct InfoVoiceContainer<I, C: for<'a> VoiceContainer<'a>> {
+    pub info: I,
+    pub container: C,
 }

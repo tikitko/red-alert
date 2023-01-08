@@ -192,7 +192,7 @@ impl RedAlertOnReady {
                         let mut channels_users_counts = channels_users_counts
                             .into_iter()
                             .collect::<Vec<(ChannelId, u8)>>();
-                        channels_users_counts.sort_by(|a, b| a.1.partial_cmp(&b.1).unwrap());
+                        channels_users_counts.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
                         channels_users_counts.first().map(|c| c.0)
                     } {
                         let is_prev_channel = guilds_active_channels

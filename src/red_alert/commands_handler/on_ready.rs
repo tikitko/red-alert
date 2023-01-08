@@ -1,5 +1,4 @@
 use super::*;
-use serenity::cache;
 use serenity::model::gateway::Activity;
 use serenity::model::id::GuildId;
 use serenity::model::prelude::{ChannelId, OnlineStatus, Ready, UserId};
@@ -9,12 +8,11 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::oneshot::{channel, Sender};
 use tokio::sync::{Mutex, RwLock};
-use tokio::time::*;
 use voskrust::api::Model as VoskModel;
 
 pub(super) struct RedAlertOnReady {
     pub(super) guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
-    pub(super) actions_history: Arc<Mutex<ActionsHistory>>,
+    pub(super) actions_history: Arc<Mutex<RedAlertActionsHistory>>,
     pub(super) guilds_voice_config: Arc<RwLock<RedAlertGuildsVoiceConfig>>,
     pub(super) recognition_model: VoskModel,
     pub(super) listening_text: Option<String>,
@@ -130,7 +128,7 @@ impl RedAlertOnReady {
                                 );
                                 actions_history.lock().await.log_history(
                                     guild_id,
-                                    ActionType::VoiceRedAlert {
+                                    RedAlertActionType::Voice {
                                         author_id: info.user_id,
                                         target_id: kick_user_id,
                                         full_text: result_text,
@@ -165,14 +163,14 @@ impl RedAlertOnReady {
             let mut guilds_active_channels: HashMap<GuildId, ChannelId> = HashMap::new();
             loop {
                 let Some(_) = tokio::select! {
-                    _ = sleep(Duration::from_secs(1)) => Some(()),
+                    _ = tokio::time::sleep(Duration::from_secs(1)) => Some(()),
                     _ = &mut rx => None,
                 } else {
                     break;
                 };
                 let bot_user_id = ctx.cache.current_user_id();
                 let guilds_voice_config = guilds_voice_config.read().await;
-                for guild_id in &guilds_voice_config.auto_track_guilds_ids {
+                for guild_id in &guilds_voice_config.auto_track_ids {
                     let Some(guild) = ctx.cache.guild(*guild_id) else {
                         continue;
                     };

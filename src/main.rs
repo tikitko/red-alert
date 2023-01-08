@@ -9,6 +9,9 @@ extern crate log;
 #[macro_use]
 extern crate async_trait;
 
+#[macro_use]
+extern crate fluent;
+
 #[tokio::main]
 async fn main() {
     use config::{Config, File};

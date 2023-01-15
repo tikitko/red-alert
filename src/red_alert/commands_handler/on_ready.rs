@@ -3,6 +3,7 @@ use serenity::model::gateway::Activity;
 use serenity::model::id::GuildId;
 use serenity::model::prelude::{ChannelId, OnlineStatus, Ready, UserId};
 use serenity::prelude::Context;
+use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
@@ -173,32 +174,41 @@ impl RedAlertOnReady {
                     let Some(guild) = ctx.cache.guild(*guild_id) else {
                         continue;
                     };
-                    let mut bot_channel_id: Option<ChannelId> = None;
-                    let mut channels_users_counts: HashMap<ChannelId, u8> = HashMap::new();
+                    let mut bot_channel_id = Option::<ChannelId>::None;
+                    let mut channels_users_count = HashMap::<ChannelId, u8>::new();
                     for (user_id, voice_state) in guild.voice_states {
-                        let Some(channel_id) = voice_state.channel_id else {
+                        let (Some(channel_id), false, false) = (
+                            voice_state.channel_id,
+                            voice_state.self_mute,
+                            voice_state.mute,
+                        ) else {
                             continue;
                         };
                         if bot_user_id == user_id {
                             bot_channel_id = Some(channel_id);
                             continue;
                         }
-                        if let Some(users_count) = channels_users_counts.remove(&channel_id) {
-                            channels_users_counts.insert(channel_id, users_count + 1);
+                        if let Some(users_count) = channels_users_count.remove(&channel_id) {
+                            channels_users_count.insert(channel_id, users_count + 1);
                         } else {
-                            channels_users_counts.insert(channel_id, 1);
+                            channels_users_count.insert(channel_id, 1);
                         }
                     }
                     if let Some(channel_id) = {
-                        let mut channels_users_counts = channels_users_counts
+                        let mut channels_users_count = channels_users_count
                             .into_iter()
                             .collect::<Vec<(ChannelId, u8)>>();
-                        channels_users_counts.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
-                        channels_users_counts.first().map(|c| c.0)
+                        channels_users_count.sort_by(|a, b| {
+                            let ordering = b.1.partial_cmp(&a.1).unwrap();
+                            if ordering == Ordering::Equal {
+                                b.0.partial_cmp(&a.0).unwrap()
+                            } else {
+                                ordering
+                            }
+                        });
+                        channels_users_count.first().map(|c| c.0)
                     } {
-                        if bot_channel_id
-                            .map_or_else(|| false, |bot_channel_id| bot_channel_id == channel_id)
-                        {
+                        if bot_channel_id.map_or_else(|| false, |i| i == channel_id) {
                             continue;
                         }
                         _ = start_listen(

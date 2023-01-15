@@ -39,11 +39,17 @@ impl RedAlertCommandsHandlerConstructor {
                 l10n: self.l10n.clone(),
             }),
             on_ready: Box::new(RedAlertOnReady {
-                guilds_voices_receivers: guilds_voices_receivers.clone(),
-                actions_history: actions_history.clone(),
-                guilds_voice_config: guilds_voice_config.clone(),
-                recognition_model: self.recognition_model,
-                red_alert_handler: self.red_alert_handler.clone(),
+                monitoring_performer: RedAlertMonitoringPerformer {
+                    guilds_voices_receivers: guilds_voices_receivers.clone(),
+                    guilds_voice_config: guilds_voice_config.clone(),
+                },
+                recognizer_performer: RedAlertRecognizerPerformer {
+                    guilds_voices_receivers: guilds_voices_receivers.clone(),
+                    actions_history: actions_history.clone(),
+                    guilds_voice_config: guilds_voice_config.clone(),
+                    recognition_model: self.recognition_model,
+                    red_alert_handler: self.red_alert_handler.clone(),
+                },
                 cancel_recognizer_sender: Arc::new(Mutex::new(None)),
                 cancel_monitoring_sender: Arc::new(Mutex::new(None)),
                 l10n: self.l10n.clone(),

@@ -70,8 +70,8 @@ impl EventHandler for Handler {
                 .iter()
                 .collect::<Vec<&Box<dyn Command + Send + Sync + 'static>>>();
             commands.push(&help_command);
-            let mut args_commands: Vec<(Vec<String>, &Box<dyn Command + Send + Sync + 'static>)> =
-                vec![];
+            let mut args_commands =
+                Vec::<(Vec<String>, &Box<dyn Command + Send + Sync + 'static>)>::new();
             for command in commands {
                 args_commands.push((args(command.prefix_anchor()), command))
             }

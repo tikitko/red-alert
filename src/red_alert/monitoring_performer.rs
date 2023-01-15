@@ -38,15 +38,14 @@ impl RedAlertMonitoringPerformer {
                     let mut bot_channel_id = Option::<ChannelId>::None;
                     let mut channels_users_count = HashMap::<ChannelId, u8>::new();
                     for (user_id, voice_state) in guild.voice_states {
-                        let (Some(channel_id), false, false) = (
-                            voice_state.channel_id,
-                            voice_state.self_mute,
-                            voice_state.mute,
-                        ) else {
+                        let Some(channel_id) = voice_state.channel_id else {
                             continue;
                         };
                         if bot_user_id == user_id {
                             bot_channel_id = Some(channel_id);
+                            continue;
+                        }
+                        if voice_state.self_mute || voice_state.mute {
                             continue;
                         }
                         if let Some(users_count) = channels_users_count.remove(&channel_id) {

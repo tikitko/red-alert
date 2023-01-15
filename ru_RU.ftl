@@ -1,3 +1,4 @@
+listening-text = красную тревогу...
 help-command-prefix-anchor = кринж киллер помощь
 help-command-full-header = > **`{$header} {$suffix}`**
 help-command-short-header = > **`{$header}`**
@@ -51,7 +52,7 @@ actions-history-red-alert-command-voice-record-reason-format = __{$reason}__
 actions-history-red-alert-command-voice-self-record = КРИНЖОВИК {$target-name} {$status} ФРАЗОЙ "{$reason-text}" ГДЕ ЕСТЬ СОВПАДЕНИЕ С "{$restricted-word}" НА {$similarity-percent}%.
 actions-history-red-alert-command-voice-target-record = КРИНЖОВИК {$target-name} {$status} ГОЛОСОМ МИРОТВОРЦA {$author-name} ПРИ ПОМОЩИ ФРАЗЫ "{$reason-text}" ГДЕ ЕСТЬ СОВПАДЕНИЕ С "{$restricted-word}" НА {$similarity-percent}%.
 actions-history-red-alert-command-text-self-record = КРИНЖОВИК {$target-name} {$status} КОМАНДОЙ
-actions-history-red-alert-command-text-target-record = КРИНЖОВИК {$target-name} {status} КОМАНДОЙ МИРОТВОРЦA {$author-name}
+actions-history-red-alert-command-text-target-record = КРИНЖОВИК {$target-name} {$status} КОМАНДОЙ МИРОТВОРЦA {$author-name}
 actions-history-red-alert-command-record = {$record-number}. [ВРЕМЯ: {$time}] {$record}.
 actions-history-red-alert-command-empty-list = ПОКА ЕЩЕ НИКОГО НЕ УШАТАЛ НА ЭТОМ СЕРВЕР)!1!))
 guilds-voice-config-red-alert-command-prefix-anchor = код красный настройка голоса

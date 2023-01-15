@@ -10,31 +10,6 @@ pub(super) struct StopListenRedAlertCommand {
     pub(super) l10n: L10n,
 }
 
-pub enum StopListenError {
-    SongbirdMissing,
-    DisconnectingError,
-    NoListeners,
-}
-
-pub async fn stop_listen(
-    guilds_voices_receivers: Arc<RwLock<HashMap<GuildId, VoiceReceiver>>>,
-    ctx: &Context,
-    guild_id: GuildId,
-) -> Result<(), StopListenError> {
-    let Some(manager) = songbird::get(ctx).await else {
-        return Err(StopListenError::SongbirdMissing);
-    };
-    if !manager.get(guild_id).is_some() {
-        return Err(StopListenError::NoListeners);
-    }
-    if manager.remove(guild_id).await.is_err() {
-        return Err(StopListenError::DisconnectingError);
-    }
-    let mut guilds_voices_receivers = guilds_voices_receivers.write().await;
-    guilds_voices_receivers.remove(&guild_id);
-    Ok(())
-}
-
 #[async_trait]
 impl Command for StopListenRedAlertCommand {
     fn prefix_anchor(&self) -> String {

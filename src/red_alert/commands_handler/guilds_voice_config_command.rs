@@ -282,14 +282,7 @@ impl Command for GuildsVoiceConfigRedAlertCommand {
             return;
         };
         let mut guilds_voice_config = self.guilds_voice_config.write().await;
-        let mut guild_voice_config = {
-            if let Some(specific) = guilds_voice_config.specific.remove(&guild_id.0) {
-                specific
-            } else {
-                let base = guilds_voice_config.base.clone();
-                base
-            }
-        };
+        let mut guild_voice_config = guilds_voice_config.remove(&guild_id);
         let mut args = params.args.to_vec();
         let answer_msg = {
             let access_granted = guild_voice_config
@@ -359,16 +352,14 @@ impl Command for GuildsVoiceConfigRedAlertCommand {
                     fluent_args![],
                 ) == action_string
                 {
-                    if guilds_voice_config.auto_track_ids.contains(&guild_id.0) {
-                        guilds_voice_config.auto_track_ids.remove(&guild_id.0);
+                    if guilds_voice_config.switch_auto_track(guild_id) {
                         self.l10n.string(
-                            "guilds-voice-config-red-alert-command-auto-track-remove",
+                            "guilds-voice-config-red-alert-command-auto-track-add",
                             fluent_args![],
                         )
                     } else {
-                        guilds_voice_config.auto_track_ids.insert(guild_id.0);
                         self.l10n.string(
-                            "guilds-voice-config-red-alert-command-auto-track-add",
+                            "guilds-voice-config-red-alert-command-auto-track-remove",
                             fluent_args![],
                         )
                     }
@@ -380,9 +371,7 @@ impl Command for GuildsVoiceConfigRedAlertCommand {
                 }
             }
         };
-        guilds_voice_config
-            .specific
-            .insert(guild_id.0, guild_voice_config);
+        guilds_voice_config.insert(guild_id, guild_voice_config);
         guilds_voice_config.write();
         drop(guilds_voice_config);
         let _ = params.channel_id.say(&ctx, answer_msg).await;

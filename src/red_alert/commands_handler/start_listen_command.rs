@@ -33,6 +33,7 @@ pub async fn start_listen(
         return Err(StartListenError::ConnectingError);
     }
     let mut handler = handler_lock.lock().await;
+    _ = handler.mute(true).await;
     let voice_receiver = VoiceReceiver::with_configuration(Default::default());
     voice_receiver.subscribe(handler.deref_mut());
     let mut guilds_voices_receivers = guilds_voices_receivers.write().await;

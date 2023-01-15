@@ -24,7 +24,6 @@ use voskrust::api::Model as VoskModel;
 
 pub struct RedAlertCommandsHandlerConstructor {
     pub recognition_model: VoskModel,
-    pub listening_text: Option<String>,
     pub red_alert_handler: Arc<RedAlertHandler>,
     pub l10n: L10n,
 }
@@ -44,10 +43,10 @@ impl RedAlertCommandsHandlerConstructor {
                 actions_history: actions_history.clone(),
                 guilds_voice_config: guilds_voice_config.clone(),
                 recognition_model: self.recognition_model,
-                listening_text: self.listening_text,
                 red_alert_handler: self.red_alert_handler.clone(),
                 cancel_recognizer_sender: Arc::new(Mutex::new(None)),
                 cancel_monitoring_sender: Arc::new(Mutex::new(None)),
+                l10n: self.l10n.clone(),
             }),
             commands: vec![
                 Box::new(TextRedAlertCommand {

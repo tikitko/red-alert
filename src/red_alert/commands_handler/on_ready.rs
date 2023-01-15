@@ -15,10 +15,10 @@ pub(super) struct RedAlertOnReady {
     pub(super) actions_history: Arc<Mutex<RedAlertActionsHistory>>,
     pub(super) guilds_voice_config: Arc<RwLock<RedAlertGuildsVoiceConfig>>,
     pub(super) recognition_model: VoskModel,
-    pub(super) listening_text: Option<String>,
     pub(super) red_alert_handler: Arc<RedAlertHandler>,
     pub(super) cancel_recognizer_sender: Arc<Mutex<Option<Sender<()>>>>,
     pub(super) cancel_monitoring_sender: Arc<Mutex<Option<Sender<()>>>>,
+    pub(super) l10n: L10n,
 }
 
 impl RedAlertOnReady {
@@ -160,7 +160,6 @@ impl RedAlertOnReady {
         let guilds_voice_config = self.guilds_voice_config.clone();
         let ctx = ctx.clone();
         tokio::spawn(async move {
-            let mut guilds_active_channels: HashMap<GuildId, ChannelId> = HashMap::new();
             loop {
                 let Some(_) = tokio::select! {
                     _ = tokio::time::sleep(Duration::from_secs(1)) => Some(()),
@@ -170,18 +169,20 @@ impl RedAlertOnReady {
                 };
                 let bot_user_id = ctx.cache.current_user_id();
                 let guilds_voice_config = guilds_voice_config.read().await;
-                for guild_id in &guilds_voice_config.auto_track_ids {
+                for guild_id in guilds_voice_config.auto_track_ids() {
                     let Some(guild) = ctx.cache.guild(*guild_id) else {
                         continue;
                     };
+                    let mut bot_channel_id: Option<ChannelId> = None;
                     let mut channels_users_counts: HashMap<ChannelId, u8> = HashMap::new();
                     for (user_id, voice_state) in guild.voice_states {
-                        if bot_user_id == user_id {
-                            continue;
-                        }
                         let Some(channel_id) = voice_state.channel_id else {
                             continue;
                         };
+                        if bot_user_id == user_id {
+                            bot_channel_id = Some(channel_id);
+                            continue;
+                        }
                         if let Some(users_count) = channels_users_counts.remove(&channel_id) {
                             channels_users_counts.insert(channel_id, users_count + 1);
                         } else {
@@ -195,13 +196,11 @@ impl RedAlertOnReady {
                         channels_users_counts.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
                         channels_users_counts.first().map(|c| c.0)
                     } {
-                        let is_prev_channel = guilds_active_channels
-                            .get(&guild.id)
-                            .map_or_else(|| false, |i| i == &channel_id);
-                        if is_prev_channel {
+                        if bot_channel_id
+                            .map_or_else(|| false, |bot_channel_id| bot_channel_id == channel_id)
+                        {
                             continue;
                         }
-                        guilds_active_channels.insert(guild.id, channel_id);
                         _ = start_listen(
                             guilds_voices_receivers.clone(),
                             &ctx,
@@ -210,7 +209,7 @@ impl RedAlertOnReady {
                         )
                         .await;
                     } else {
-                        if !guilds_active_channels.remove(&guild.id).is_some() {
+                        if bot_channel_id.is_none() {
                             continue;
                         }
                         _ = stop_listen(guilds_voices_receivers.clone(), &ctx, guild.id).await;
@@ -225,8 +224,13 @@ impl RedAlertOnReady {
 impl OnReady for RedAlertOnReady {
     async fn process(&self, ctx: Context, ready: Ready) {
         info!("{} is connected!", ready.user.name);
-        let activity = self.listening_text.as_ref().map(|t| Activity::listening(t));
-        ctx.set_presence(activity, OnlineStatus::Online).await;
+        ctx.set_presence(
+            Some(Activity::listening(
+                self.l10n.string("listening-text", fluent_args![]),
+            )),
+            OnlineStatus::Online,
+        )
+        .await;
         self.start_recognizer(&ctx).await;
         self.start_monitoring(&ctx).await;
     }

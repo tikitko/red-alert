@@ -42,8 +42,6 @@ async fn main() {
 
     let l10n = components::L10n::load(&lang_id_string);
 
-    let listening_text = settings.get_string("listening_text").ok();
-
     let vosk_model_path = settings
         .get_string("vosk_model_path")
         .expect("Expected a VOSK model path in the config!");
@@ -59,7 +57,6 @@ async fn main() {
             red_alert::RedAlertCommandsHandlerConstructor {
                 recognition_model: VoskModel::new(vosk_model_path.as_str())
                     .expect("Incorrect recognition model!"),
-                listening_text,
                 red_alert_handler: Arc::new(red_alert::RedAlertHandler),
                 l10n,
             }

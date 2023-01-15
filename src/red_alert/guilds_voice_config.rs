@@ -5,9 +5,9 @@ use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct RedAlertGuildsVoiceConfig {
-    pub auto_track_ids: HashSet<u64>,
-    pub base: RedAlertVoiceConfig<u64>,
-    pub specific: HashMap<u64, RedAlertVoiceConfig<u64>>,
+    auto_track_ids: HashSet<u64>,
+    base: RedAlertVoiceConfig<u64>,
+    specific: HashMap<u64, RedAlertVoiceConfig<u64>>,
 }
 
 impl RedAlertGuildsVoiceConfig {
@@ -26,5 +26,24 @@ impl RedAlertGuildsVoiceConfig {
     }
     pub fn get(&self, guild_id: &GuildId) -> &RedAlertVoiceConfig<u64> {
         self.specific.get(&guild_id.0).unwrap_or(&self.base)
+    }
+    pub fn remove(&mut self, guild_id: &GuildId) -> RedAlertVoiceConfig<u64> {
+        self.specific
+            .remove(&guild_id.0)
+            .unwrap_or(self.base.clone())
+    }
+    pub fn insert(&mut self, guild_id: GuildId, guild_voice_config: RedAlertVoiceConfig<u64>) {
+        self.specific.insert(guild_id.0, guild_voice_config);
+    }
+    pub fn switch_auto_track(&mut self, guild_id: GuildId) -> bool {
+        if self.auto_track_ids.remove(&guild_id.0) {
+            false
+        } else {
+            self.auto_track_ids.insert(guild_id.0);
+            true
+        }
+    }
+    pub fn auto_track_ids(&self) -> &HashSet<u64> {
+        &self.auto_track_ids
     }
 }
